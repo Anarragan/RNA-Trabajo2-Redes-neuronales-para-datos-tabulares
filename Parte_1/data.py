@@ -1,30 +1,33 @@
 """
-Paso 1: separar las variables de Lending Club en grupos (predictoras / futuro / descartadas)
-y armar el dataset que usará la regresión logística.
+Paso 1: separar las variables de Lending Club (predictoras / futuro / descartadas)
+y armar el dataset de modelamiento: data/datos_modelo.csv
 
-Ejecutar (sin argumentos):  python preparar_variables.py
+Ejecutar (sin argumentos):  python data.py
 """
 import os
+
 import kagglehub
 import pandas as pd
+
+SALIDA = "data/datos_modelo.csv"
+
 
 def titulo(texto):
     print("\n" + "=" * 60)
     print(texto)
     print("=" * 60)
 
+
 # ---------------------------------------------------------------
 # 1. CARGAR LOS DATOS Y VER EL PERIODO
 # ---------------------------------------------------------------
 path = kagglehub.dataset_download("ranadeep/credit-risk-dataset")
-csv_path = os.path.join(path, "loan", "loan.csv")
-df = pd.read_csv(csv_path, low_memory=False)
+df = pd.read_csv(os.path.join(path, "loan", "loan.csv"), low_memory=False)
 
 titulo("1. DATOS")
 print(f"Registros y variables: {df.shape[0]:,} x {df.shape[1]}")
 
-# Porcentaje de nulos de cada columna (con todos los datos, antes de filtrar)
-nulos = df.isna().mean() * 100
+nulos = df.isna().mean() * 100  # % de nulos por columna, con todos los datos
 
 # Se convierte a fecha ANTES de sacar mínimo y máximo. Como texto, el orden
 # es alfabético ("Apr-2008" va antes que "Aug-2007") y el periodo sale mal.
@@ -32,27 +35,28 @@ df["issue_d"] = pd.to_datetime(df["issue_d"], format="%b-%Y")
 print(f"Periodo (issue_d): {df['issue_d'].min():%Y-%m} a {df['issue_d'].max():%Y-%m}")
 
 # ---------------------------------------------------------------
-# 2. GRUPOS DE VARIABLES )
+# 2. GRUPOS DE VARIABLES (las 74 columnas quedan en un solo grupo)
 # ---------------------------------------------------------------
-# Las que SÍ usamos tal cual
+# Se usan tal cual
 PREDICTORAS = [
-    "loan_amnt", "term", "purpose", "emp_length", "home_ownership", "annual_inc",
-    "verification_status", "dti", "delinq_2yrs", "inq_last_6mths", "open_acc",
-    "pub_rec", "revol_bal", "revol_util", "total_acc",
+    "loan_amnt", "purpose", "home_ownership", "annual_inc", "verification_status", "dti",
+    "delinq_2yrs", "inq_last_6mths", "open_acc", "pub_rec", "revol_bal", "revol_util", "total_acc",
 ]
 
-# Las que se usan, pero transformadas
+# Se usan, pero convertidas a otra forma (ver sección 4)
 A_TRANSFORMAR = [
-    "earliest_cr_line",         # se convierte en antiguedad_hist_anios
-    "mths_since_last_delinq",   # su nulo significa "nunca tuvo mora": se vuelve  ind_mora_previa
-    "mths_since_last_record",   # su nulo significa "nunca tuvo registro público":  ind_registro_publico
+    "term",                     # texto "36 months" / "60 months" -> indicador de 60 meses
+    "emp_length",               # texto "10+ years" -> número de años
+    "earliest_cr_line",         # fecha -> antigüedad del historial
+    "mths_since_last_delinq",   # su nulo significa "nunca tuvo mora": se vuelve indicador
+    "mths_since_last_record",   # su nulo significa "nunca tuvo registro público": indicador
     "issue_d",                  # fecha del crédito: sirve para dividir en el tiempo, no es predictora
 ]
 
 OBJETIVO = ["loan_status"]
 
-# FUTURO: solo se conocen DESPUÉS de dar el crédito (pagos, saldos, recuperaciones...)
-# Usarlas sería hacer trampa: el modelo vería el resultado antes de predecirlo.
+# FUTURO: solo se conocen DESPUÉS de dar el crédito. Usarlas sería hacer trampa:
+# el modelo vería el resultado antes de predecirlo.
 POSTERIORES = [
     "out_prncp", "out_prncp_inv", "total_pymnt", "total_pymnt_inv", "total_rec_prncp",
     "total_rec_int", "total_rec_late_fee", "recoveries", "collection_recovery_fee",
@@ -69,7 +73,6 @@ MUCHOS_NULOS = [
     "open_il_12m", "max_bal_bc", "open_il_6m", "open_il_24m", "open_rv_12m", "total_bal_il",
 ]
 
-# No aportan: constantes o sin relación con el solicitante
 NO_APORTAN = ["policy_code", "application_type", "initial_list_status"]
 IDENTIFICADORES_TEXTO = ["id", "member_id", "url", "desc", "title", "emp_title"]
 GEOGRAFIA = ["zip_code", "addr_state"]  # posible proxy de características protegidas
@@ -93,6 +96,29 @@ GRUPOS = {
     "Otras (versión mejorada)": OTRAS,
 }
 
+titulo("2. CLASIFICACION DE LAS 74 COLUMNAS")
+for nombre, lista in GRUPOS.items():
+    print(f"{len(lista):>3}  {nombre}")
+
+# Verificación: ninguna columna sin clasificar, ninguna en dos grupos
+todas = [c for lista in GRUPOS.values() for c in lista]
+sin_clasificar = [c for c in df.columns if c not in todas]
+repetidas = sorted({c for c in todas if todas.count(c) > 1})
+no_existen = [c for c in todas if c not in df.columns]
+if not (sin_clasificar or repetidas or no_existen):
+    print("Verificacion: OK, cada columna esta en un solo grupo.")
+else:
+    print("Verificacion: PROBLEMA")
+    print("  Sin clasificar:", sin_clasificar)
+    print("  En dos grupos:", repetidas)
+    print("  No existen en el CSV:", no_existen)
+
+print(f"\nCasi vacias: entre {nulos[MUCHOS_NULOS].min():.1f}% y {nulos[MUCHOS_NULOS].max():.1f}% de nulos.")
+print("\nVariables 'no aportan' (valores y cuantos registros):")
+for c in NO_APORTAN:
+    print(f"  {c}: {df[c].value_counts(dropna=False).to_dict()}")
+print(f"  pymnt_plan (excluida por ser posterior): {df['pymnt_plan'].value_counts(dropna=False).to_dict()}")
+
 # ---------------------------------------------------------------
 # 3. VARIABLE OBJETIVO: malo = 1, bueno = 0, el resto se elimina
 # ---------------------------------------------------------------
@@ -104,9 +130,9 @@ mapa = {
     "Late (31-120 days)": 1,
     "Does not meet the credit policy. Status:Charged Off": 1,
 }
-df["malo"] = df["loan_status"].map(mapa)
+df["malo"] = df["loan_status"].map(mapa)  # lo que no está en el mapa queda NA
 n_excluidos = int(df["malo"].isna().sum())
-df = df.dropna(subset=["malo"]).copy()  # quita Current, Issued, In Grace Period, Late (16-30 days)
+df = df.dropna(subset=["malo"]).copy()    # quita Current, Issued, In Grace Period, Late (16-30 days)
 df["malo"] = df["malo"].astype(int)
 
 titulo("3. VARIABLE OBJETIVO")
@@ -120,42 +146,38 @@ print(f"Solicitudes conjuntas (JOINT) entre los modelables: {(df['application_ty
 # ---------------------------------------------------------------
 # 4. DATASET PARA EL MODELO
 # ---------------------------------------------------------------
-df_modelo = df[["issue_d", "malo"] + PREDICTORAS].copy()
+d = df[["issue_d", "malo"] + PREDICTORAS].copy()
 
 # plazo: 0 = 36 meses, 1 = 60 meses
-df_modelo["term_60m"] = df_modelo.pop("term").str.strip().map({"36 months": 0, "60 months": 1})
+d["term_60m"] = df["term"].str.strip().map({"36 months": 0, "60 months": 1})
 
 # antigüedad laboral en años ("< 1 year" -> 0, "10+ years" -> 10, "n/a" -> vacío)
-emp = df_modelo["emp_length"].str.extract(r"(\d+)")[0].astype(float)
-emp = emp.mask(df_modelo["emp_length"].fillna("").str.startswith("<"), 0)
-df_modelo["emp_length_anios"] = emp
-df_modelo = df_modelo.drop(columns="emp_length")
+emp = df["emp_length"].str.extract(r"(\d+)")[0].astype(float)
+d["emp_length_anios"] = emp.mask(df["emp_length"].fillna("").str.startswith("<"), 0)
 
 # vivienda: agrupa las categorías raras
-ho = df_modelo["home_ownership"].str.upper()
-df_modelo["home_ownership"] = ho.where(ho.isin(["MORTGAGE", "OWN", "RENT"]), "OTRO")
+ho = d["home_ownership"].str.upper()
+d["home_ownership"] = ho.where(ho.isin(["MORTGAGE", "OWN", "RENT"]), "OTRO")
 
 # antigüedad del historial, medida hasta la fecha del crédito (no hasta hoy)
 earliest = pd.to_datetime(df["earliest_cr_line"], format="%b-%Y")
-df_modelo["antiguedad_hist_anios"] = (df["issue_d"] - earliest).dt.days / 365.25
+d["antiguedad_hist_anios"] = (df["issue_d"] - earliest).dt.days / 365.25
 
-# indicadores: 1 si la persona tuvo el evento, 0 si el dato está vacío
-# (por construcción nunca tienen nulos)
-df_modelo["ind_mora_previa"] = df["mths_since_last_delinq"].notna().astype(int)
-df_modelo["ind_registro_publico"] = df["mths_since_last_record"].notna().astype(int)
+# indicadores: 1 si la persona tuvo el evento, 0 si el dato está vacío (nunca tienen nulos)
+d["ind_mora_previa"] = df["mths_since_last_delinq"].notna().astype(int)
+d["ind_registro_publico"] = df["mths_since_last_record"].notna().astype(int)
 
 titulo("4. DATASET FINAL")
-print(f"Filas x columnas: {df_modelo.shape[0]:,} x {df_modelo.shape[1]}")
-print("Columnas:", ", ".join(df_modelo.columns))
+print(f"Filas x columnas: {d.shape[0]:,} x {d.shape[1]}")
+print("Columnas:", ", ".join(d.columns))
 
-faltantes = df_modelo.isna().sum()
+faltantes = d.isna().sum()
 faltantes = faltantes[faltantes > 0].sort_values(ascending=False)
 print("\nValores faltantes reales (se imputaran despues, usando solo datos de entrenamiento):")
 for col, n in faltantes.items():
-    print(f"  {col}: {n:,} ({n / len(df_modelo) * 100:.2f}%)")
+    print(f"  {col}: {n:,} ({n / len(d) * 100:.2f}%)")
 print("Las demas columnas, incluidos los indicadores ind_*, no tienen faltantes.")
 
-os.makedirs("data", exist_ok=True)
-salida = "data/datos_modelo.csv"
-df_modelo.to_csv(salida, index=False)
-print(f"\nGuardado en {salida} ({os.path.getsize(salida) / 1e6:.1f} MB)")
+os.makedirs(os.path.dirname(SALIDA), exist_ok=True)
+d.to_csv(SALIDA, index=False)
+print(f"\nGuardado en {SALIDA} ({os.path.getsize(SALIDA) / 1e6:.1f} MB)")

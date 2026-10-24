@@ -1,51 +1,59 @@
 """
-Preprocesamiento compartido por la regresión logística y, más adelante, la red neuronal.
+Datos listos para modelar: partición temporal + preprocesamiento.
+Lo usan la regresión logística y, más adelante, la red neuronal, la scorecard y la parte 2,
+para estandarizar los datos y que tengan el mismo tratamiento.
 
-Todo lo que se calcula con datos (medianas, límites de recorte, medias,
-desviaciones) se ajusta SOLO con entrenamiento y después se aplica igual a validación y prueba.
-Así los tres conjuntos se tratan igual y no se filtra información del futuro.
+Uso típico:
+    from preprocesamiento import preparar
+    prep, X, y, partes = preparar()
+    X["entrenamiento"], y["entrenamiento"]   # y lo mismo con "validacion" y "prueba"
 """
 import numpy as np
 import pandas as pd
 
 RUTA_DATOS = "data/datos_modelo.csv"
 
-# Variables numéricas continuas y conteos: se imputan, se recortan y se estandarizan
+# Cortes de la partición temporal (por fecha de originación). Cambiarlos aquí los cambia en todos los modelos.
+CORTE_VAL = "2013-01-01"    # validación: desde esta fecha
+CORTE_TEST = "2014-01-01"   # prueba: desde esta fecha
+NOMBRES = ("entrenamiento", "validacion", "prueba")
+
+# Continuas y conteos: se imputan con la mediana, se recortan por percentiles y se estandarizan
 CONTINUAS = ["loan_amnt", "annual_inc", "dti", "revol_bal", "revol_util",
              "antiguedad_hist_anios", "emp_length_anios"]
 CONTEOS = ["delinq_2yrs", "inq_last_6mths", "open_acc", "pub_rec", "total_acc"]
 
-# Ya son 0/1: se dejan como están (así su coeficiente se lee directo como razón de odds)
+# Ya son 0/1: se dejan como están
 BINARIAS = ["term_60m", "ind_mora_previa", "ind_registro_publico"]
 
-# Categóricas -> variables 0/1 (one-hot). Se indica la categoría de referencia, que se omite.
+# Categóricas -> columnas 0/1 (one-hot). Se indica la categoría de referencia, que se omite.
 CATEGORICAS = {
     "purpose": "debt_consolidation",
     "home_ownership": "MORTGAGE",
     "verification_status": "Not Verified",
 }
 
-# Variables muy sesgadas a la derecha: se usa log(1 + x) antes de estandarizar
+# Muy sesgadas a la derecha: se usa log(1 + x) antes de estandarizar
 CON_LOG = ["annual_inc", "revol_bal"]
 
-def cargar_datos(ruta=RUTA_DATOS):
-    return pd.read_csv(ruta, parse_dates=["issue_d"])
-
-def partir(df, corte_val, corte_test):
-    """Partición temporal por fecha de originación: entrenamiento < validación < prueba."""
+def partir(df, corte_val=CORTE_VAL, corte_test=CORTE_TEST):
+    """Partición temporal: entrenamiento < validación < prueba."""
     corte_val, corte_test = pd.Timestamp(corte_val), pd.Timestamp(corte_test)
     if not corte_val < corte_test:
         raise ValueError("El corte de validación debe ser anterior al corte de prueba.")
-    train = df[df["issue_d"] < corte_val]
-    val = df[(df["issue_d"] >= corte_val) & (df["issue_d"] < corte_test)]
-    test = df[df["issue_d"] >= corte_test]
-    for nombre, parte in [("entrenamiento", train), ("validación", val), ("prueba", test)]:
+    partes = {
+        "entrenamiento": df[df["issue_d"] < corte_val],
+        "validacion": df[(df["issue_d"] >= corte_val) & (df["issue_d"] < corte_test)],
+        "prueba": df[df["issue_d"] >= corte_test],
+    }
+    for nombre, parte in partes.items():
         if parte.empty:
             raise ValueError(f"La partición de {nombre} quedó vacía; revisa los cortes.")
-    return train.copy(), val.copy(), test.copy()
+    return {k: v.copy() for k, v in partes.items()}
+
 
 class Preprocesador:
-    """Imputa con la mediana, recorta extremos por percentiles, estandariza y codifica categorías."""
+    """Imputa con la mediana, recorta extremos, estandariza y codifica categorías."""
 
     def __init__(self, p_inf=1, p_sup=99):
         self.p_inf = p_inf
@@ -88,6 +96,19 @@ class Preprocesador:
             for cat in self.categorias_[var]:
                 if cat != ref:
                     X[f"{var}_{cat}"] = (df[var] == cat).astype(int)
-        # Una categoría nunca vista en entrenamiento queda con todos los 0/1 en 0,
+        # Una categoría que no estaba en entrenamiento queda con todos sus 0/1 en 0,
         # es decir, se trata como la categoría de referencia.
         return X
+
+
+def preparar(corte_val=CORTE_VAL, corte_test=CORTE_TEST, ruta=RUTA_DATOS):
+    """Todo el flujo de datos en una llamada.
+
+    Devuelve (preprocesador, X, y, partes); X, y y partes son diccionarios con las claves
+    "entrenamiento", "validacion" y "prueba".
+    """
+    partes = partir(pd.read_csv(ruta, parse_dates=["issue_d"]), corte_val, corte_test)
+    prep = Preprocesador().fit(partes["entrenamiento"])
+    X = {k: prep.transform(v) for k, v in partes.items()}
+    y = {k: v["malo"].to_numpy() for k, v in partes.items()}
+    return prep, X, y, partes
