@@ -1,0 +1,11 @@
+# Versiones con las que se probó todo (Python 3.12).
+# PyTorch en CPU:  pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+numpy==2.5.4
+pandas==3.1.0
+scikit-learn==1.9.1
+scipy==1.18.1
+joblib==1.6.0
+matplotlib==3.11.2
+torch==2.14.1
+# Solo para rehacer los datos desde Kaggle (paso "datos"); el resto del flujo no lo necesita
+kagglehub==1.0.3
