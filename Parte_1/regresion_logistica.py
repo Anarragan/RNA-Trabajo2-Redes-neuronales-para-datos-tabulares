@@ -1,11 +1,11 @@
 """
-Regresión logística.
+Tarea 3: regresión logística de referencia. Guarda modelos/regresion_logistica.joblib.
 
-Ejecutar:
     python regresion_logistica.py
-    python regresion_logistica.py --C 0.1 --corte-val 2014-01-01 --corte-test 2015-01-01
+    python regresion_logistica.py --C 0.1
 """
 import argparse
+import os
 import time
 from pathlib import Path
 
@@ -15,16 +15,16 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
 from metricas import tabla_metricas
-from preprocesamiento import CORTE_TEST, CORTE_VAL, preparar
+from preprocesamiento import preparar
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))  # las rutas (data/, modelos/) son relativas a Parte_1
 
 parser = argparse.ArgumentParser(description="Regresión logística de referencia")
 parser.add_argument("--C", type=float, default=1.0, help="inverso de la penalización L2 (menor = más penalización)")
-parser.add_argument("--corte-val", default=CORTE_VAL, help="inicio de validación")
-parser.add_argument("--corte-test", default=CORTE_TEST, help="inicio de prueba")
 args = parser.parse_args()
 
 # 1. Datos: partición temporal + preprocesamiento ajustado solo con entrenamiento ------------
-prep, X, y, partes = preparar(args.corte_val, args.corte_test)
+prep, X, y, partes = preparar()
 print("PARTICIONES")
 for nombre, parte in partes.items():
     print(f"  {nombre:<13} {len(parte):>8,} registros | tasa de malos {parte['malo'].mean():.3f} "

@@ -1,6 +1,50 @@
 # RNA-Trabajo2-Redes-neuronales-para-datos-tabulares
 
 
+## Cómo ejecutar
+
+```bash
+python -m venv .venv && .venv\Scripts\activate          # (Linux/Mac: source .venv/bin/activate)
+pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
+
+cd Parte_1
+python main.py --demo      # todo el flujo en versión rápida (< 2 min)
+python main.py             # flujo completo (~5 min)
+python main.py --solo t4   # un paso: datos | t2 | t3 | t4 | t5
+python red_neuronal.py --busqueda 0 --capas 64 32 --lr 0.001 --dropout 0.2 --l2 1e-4 --semillas 5   # parámetros a mano
+```
+
+Los datos procesados ya están en el repositorio: no hace falta internet. Solo `--con-datos` los rehace desde `loan.csv`.
+Semillas: la partición es temporal (sin azar), la búsqueda usa la semilla 0 y la red final las semillas 0..29.
+
+## Qué hace cada archivo
+
+| Paso | Script | Lee | Escribe |
+|---|---|---|---|
+| datos | `preparacion_datos.py` | `loan.csv` (Kaggle) | `data/datos_modelo.csv`, `data/base_lgd.csv` |
+| T2 hipótesis | `analisis_descriptivo.py` | `datos_modelo.csv` | `resultados/t2_hipotesis.csv`, `figuras/t2_hipotesis.png` |
+| T3 regresión logística | `regresion_logistica.py` | `datos_modelo.csv` | `modelos/regresion_logistica.joblib` |
+| T4 red neuronal | `red_neuronal.py` | `datos_modelo.csv` | `modelos/red_neuronal.pt`, `resultados/t4_*` |
+| T5 evaluación | `evaluacion.py` | datos + los dos modelos | `resultados/t5_*`, `figuras/t5_*` |
+
+Apoyo: `preprocesamiento.py` (partición temporal + estandarización, igual para todos los modelos) y `metricas.py`.
+
+**Carpeta `modelos/`**: modelos ya entrenados. No se usan a mano: `evaluacion.py` los carga (y la scorecard y la app web los cargarán)
+con `joblib.load("modelos/regresion_logistica.joblib")` y `red_neuronal.cargar_red()`. Así nadie reentrena.
+
+**Carpeta `resultados/`** (alimentan las tablas del reporte):
+`t2_hipotesis.csv` veredicto de H1-H6 · `t4_busqueda.csv` las 10 configuraciones probadas ·
+`t4_semillas.csv` métricas de las 30 semillas · `t4_resumen.txt` media/desv/mejor/peor, parámetros y tiempo ·
+`t5_metricas.csv` AUC/Gini/KS/Brier de ambos modelos · `t5_particiones.csv` tamaño y periodo de cada partición.
+
+`Parte_2/` está vacía (ver su README). `legacy/` es el código anterior, solo de consulta. `CAMBIOS.md` explica qué se movió.
+Caso de uso e hipótesis: `CASO_DE_USO.md`.
+
+Pendiente de la Parte 1: scorecard y variables de riesgo (T6-T7).
+
+---
+
 # Guía inicial de GitFlow Simplificado
 
 > **Spoiler:** El único comando que uso es:

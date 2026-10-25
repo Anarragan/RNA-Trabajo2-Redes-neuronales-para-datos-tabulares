@@ -20,6 +20,15 @@ def evaluar(y, p):
             "Brier": brier_score_loss(y, p), "tasa_obs": float(np.mean(y)), "prob_media": float(np.mean(p))}
 
 
+def curva_calibracion(y, p, n_grupos=10):
+    """Curva de calibración: ordena por probabilidad, corta en grupos de igual tamaño (deciles)
+    y compara la probabilidad media predicha con la tasa observada de malos de cada grupo.
+    Devuelve (prob_media_por_grupo, tasa_observada_por_grupo). Si el modelo está calibrado, son iguales."""
+    y, p = np.asarray(y), np.asarray(p)
+    grupos = np.array_split(np.argsort(p), n_grupos)
+    return np.array([p[g].mean() for g in grupos]), np.array([y[g].mean() for g in grupos])
+
+
 def tabla_metricas(y, probs):
     """y y probs son diccionarios {particion: arreglo}. Devuelve una tabla con una fila por partición."""
     return pd.DataFrame({k: evaluar(y[k], probs[k]) for k in y}).T
