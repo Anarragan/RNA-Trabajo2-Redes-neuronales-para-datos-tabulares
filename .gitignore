@@ -1,3 +1,8 @@
+ 
+.venv/ 
+.venv/ 
+.venv/ 
+
 .venv/
 venv/
 .vscode/
@@ -9,3 +14,4 @@ Parte_1/data/raw/
 
 # salidas del modo demo
 *_demo.*
+ 
