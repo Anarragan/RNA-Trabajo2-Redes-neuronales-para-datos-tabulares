@@ -1,0 +1,7 @@
+hipotesis,variable,enunciado,evidencia,tasa_min,tasa_max,veredicto
+H1,dti,Mayor carga de deuda -> más riesgo,AUC univariada = 0.549,0.13233016154016375,0.1962751510448423,confirmada
+H2,annual_inc,Mayor ingreso -> menos riesgo,AUC univariada = 0.451,0.1229888348124821,0.18985810141898582,confirmada
+H3,delinq_2yrs,Morosidad previa -> más riesgo,AUC univariada = 0.507,0.16096956202717405,0.18455366098294884,no confirmada
+H4,antiguedad_hist_anios,Historial más largo -> menos riesgo,AUC univariada = 0.487,0.1514193834553116,0.17013022998060404,confirmada
+H5,purpose,El propósito cambia el riesgo,chi2 p = 8.7e-144,0.11407662505380974,0.2801642451042325,confirmada
+H6,home_ownership,Alquilar es más riesgoso que casa propia o hipoteca,chi2 p = 5.3e-10,0.15401264172753878,0.2026431718061674,confirmada

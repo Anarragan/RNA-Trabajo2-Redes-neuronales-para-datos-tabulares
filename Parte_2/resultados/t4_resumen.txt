@@ -1,0 +1,4 @@
+MAE Promedio: 0.1657 +/- 0.0101
+MAE Mejor: 0.1560 | Peor: 0.1796
+RMSE Promedio: 0.1990 +/- 0.0106
+Parametros Entrenables: 4545
