@@ -7,9 +7,6 @@ Paso 1: de los datos crudos de Lending Club a los datos de modelamiento.
 
 Esta es la ÚNICA clase que limpia datos. Los demás archivos leen la salida 1.
 
-Ejecutar:
-    python preparacion_datos.py                     # descarga el dataset con kagglehub
-    python preparacion_datos.py --csv ruta/loan.csv  # usa un loan.csv que ya tengas
 """
 import argparse
 import os
@@ -17,15 +14,14 @@ import os
 import pandas as pd
 
 # ---------------------------------------------------------------
-# GRUPOS DE VARIABLES (las 74 columnas quedan en un solo grupo)
+# GRUPOS DE VARIABLES (documentan qué se usa y qué se excluye y por qué; solo PREDICTORAS y A_TRANSFORMAR se usan)
 # ---------------------------------------------------------------
 # Se usan tal cual
 PREDICTORAS = [
     "loan_amnt", "purpose", "home_ownership", "annual_inc", "verification_status", "dti",
     "delinq_2yrs", "inq_last_6mths", "open_acc", "pub_rec", "revol_bal", "revol_util", "total_acc",
 ]
-
-# Se usan, pero convertidas a otra forma (ver construir_dataset)
+# Se usan, pero convertidas a otra forma 
 A_TRANSFORMAR = [
     "term",                     # texto "36 months" / "60 months" -> indicador de 60 meses
     "emp_length",               # texto "10+ years" -> número de años
@@ -65,20 +61,8 @@ OTRAS = [
     "collections_12_mths_ex_med", "acc_now_delinq", "mths_since_last_major_derog",
 ]
 
-GRUPOS = {
-    "Predictoras directas (se usan)": PREDICTORAS,
-    "Predictoras transformadas (se usan)": A_TRANSFORMAR,
-    "Objetivo": OBJETIVO,
-    "Posteriores al crédito (futuro, se excluyen)": POSTERIORES,
-    "Decisiones de la plataforma (se excluyen)": PLATAFORMA,
-    "Casi vacías (se excluyen)": MUCHOS_NULOS,
-    "No aportan (se excluyen)": NO_APORTAN,
-    "Identificadores y texto (se excluyen)": IDENTIFICADORES_TEXTO,
-    "Geografía (se excluye)": GEOGRAFIA,
-    "Otras (versión mejorada)": OTRAS,
-}
 
-# Variable objetivo: malo = 1, bueno = 0; lo que no está aquí (Current, Issued, ...) queda NA y se elimina
+# Variable objetivo: malo = 1, bueno = 0
 MAPA_OBJETIVO = {
     "Fully Paid": 0,
     "Does not meet the credit policy. Status:Fully Paid": 0,
@@ -94,18 +78,11 @@ CAMPOS_LGD = [
     "total_rec_int", "total_rec_late_fee", "recoveries", "collection_recovery_fee", "last_pymnt_d",
 ]
 
-
-def titulo(texto):
-    print("\n" + "=" * 60)
-    print(texto)
-    print("=" * 60)
-
-
 class PreparadorDatos:
-    """Convierte loan.csv (crudo) en data/datos_modelo.csv y data/base_lgd.csv (listos para modelar)."""
+    """Convierte loan.csv en datos listos para modelar."""
 
     def __init__(self, ruta_csv=None, salida="data/datos_modelo.csv", salida_lgd="data/base_lgd.csv"):
-        self.ruta_csv = ruta_csv      # None = descargar con kagglehub
+        self.ruta_csv = ruta_csv      
         self.salida = salida
         self.salida_lgd = salida_lgd
 
@@ -117,54 +94,26 @@ class PreparadorDatos:
             ruta = os.path.join(kagglehub.dataset_download("ranadeep/credit-risk-dataset"), "loan", "loan.csv")
         df = pd.read_csv(ruta, low_memory=False)
 
-        titulo("1. DATOS")
+        print("1. DATOS CRUDOS")
         print(f"Registros y variables: {df.shape[0]:,} x {df.shape[1]}")
-        # Se convierte a fecha ANTES de sacar mínimo y máximo. Como texto, el orden es
-        # alfabético ("Apr-2008" va antes que "Aug-2007") y el periodo sale mal.
+        # Se convierte a fecha ANTES de sacar mínimo y máximo. 
         df["issue_d"] = pd.to_datetime(df["issue_d"], format="%b-%Y")
         print(f"Periodo (issue_d): {df['issue_d'].min():%Y-%m} a {df['issue_d'].max():%Y-%m}")
         return df
 
-    def revisar_columnas(self, df):
-        """Imprime cuántas columnas hay en cada grupo y verifica que ninguna quede sin clasificar."""
-        titulo("2. CLASIFICACION DE LAS 74 COLUMNAS")
-        for nombre, lista in GRUPOS.items():
-            print(f"{len(lista):>3}  {nombre}")
-
-        todas = [c for lista in GRUPOS.values() for c in lista]
-        sin_clasificar = [c for c in df.columns if c not in todas]
-        repetidas = sorted({c for c in todas if todas.count(c) > 1})
-        no_existen = [c for c in todas if c not in df.columns]
-        if not (sin_clasificar or repetidas or no_existen):
-            print("Verificacion: OK, cada columna esta en un solo grupo.")
-        else:
-            print("Verificacion: PROBLEMA")
-            print("  Sin clasificar:", sin_clasificar)
-            print("  En dos grupos:", repetidas)
-            print("  No existen en el CSV:", no_existen)
-
-        nulos = df[MUCHOS_NULOS].isna().mean() * 100
-        print(f"\nCasi vacias: entre {nulos.min():.1f}% y {nulos.max():.1f}% de nulos.")
-        print("\nVariables 'no aportan' (valores y cuantos registros):")
-        for c in NO_APORTAN:
-            print(f"  {c}: {df[c].value_counts(dropna=False).to_dict()}")
-        print(f"  pymnt_plan (excluida por ser posterior): {df['pymnt_plan'].value_counts(dropna=False).to_dict()}")
-
     def construir_objetivo(self, df):
         """Crea la columna 'malo' (1 = incumple) y quita los créditos sin desenlace claro."""
         df = df.copy()
-        df["malo"] = df["loan_status"].map(MAPA_OBJETIVO)  # lo que no está en el mapa queda NA
+        df["malo"] = df["loan_status"].map(MAPA_OBJETIVO)  
         n_excluidos = int(df["malo"].isna().sum())
-        df = df.dropna(subset=["malo"]).copy()             # quita Current, Issued, In Grace Period, Late (16-30 days)
+        df = df.dropna(subset=["malo"]).copy()             
         df["malo"] = df["malo"].astype(int)
 
-        titulo("3. VARIABLE OBJETIVO")
-        print(f"Excluidos (Current, Issued, In Grace Period, Late 16-30): {n_excluidos:,}")
+        print("\n2. OBJETIVO")
         print(f"Registros modelables: {len(df):,}")
         print(f"  Buenos (0): {(df['malo'] == 0).sum():,}")
         print(f"  Malos  (1): {(df['malo'] == 1).sum():,}")
         print(f"  Tasa de malos: {df['malo'].mean():.3f}")
-        print(f"Solicitudes conjuntas (JOINT) entre los modelables: {(df['application_type'] == 'JOINT').sum():,}")
         return df
 
     def construir_dataset(self, df):
@@ -190,7 +139,7 @@ class PreparadorDatos:
         d["ind_mora_previa"] = df["mths_since_last_delinq"].notna().astype(int)
         d["ind_registro_publico"] = df["mths_since_last_record"].notna().astype(int)
 
-        titulo("4. DATASET FINAL")
+        print("\n3. DATASET DE MODELAMIENTO")
         print(f"Filas x columnas: {d.shape[0]:,} x {d.shape[1]}")
         print("Columnas:", ", ".join(d.columns))
         faltantes = d.isna().sum()
@@ -198,7 +147,6 @@ class PreparadorDatos:
         print("\nValores faltantes reales (se imputaran despues, usando solo datos de entrenamiento):")
         for col, n in faltantes.items():
             print(f"  {col}: {n:,} ({n / len(d) * 100:.2f}%)")
-        print("Las demas columnas, incluidos los indicadores ind_*, no tienen faltantes.")
         return d
 
     def construir_base_lgd(self, df, d):
@@ -212,9 +160,8 @@ class PreparadorDatos:
         print(f"Guardado en {ruta} ({os.path.getsize(ruta) / 1e6:.1f} MB)")
 
     def ejecutar(self):
-        """Corre todo el paso: cargar -> revisar -> objetivo -> dataset -> guardar los dos archivos."""
+        """Corre todo el paso: cargar -> objetivo -> dataset -> guardar los dos archivos."""
         df = self.cargar()
-        self.revisar_columnas(df)
         df = self.construir_objetivo(df)
         d = self.construir_dataset(df)
         print()

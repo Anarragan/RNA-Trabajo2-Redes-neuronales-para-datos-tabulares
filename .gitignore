@@ -2,6 +2,7 @@
 venv/
 .vscode/
 __pycache__/
+preparacion_datos/__pycache__/
 *.pyc
 
 # datos crudos de Kaggle (se descargan con kagglehub; no se suben)
