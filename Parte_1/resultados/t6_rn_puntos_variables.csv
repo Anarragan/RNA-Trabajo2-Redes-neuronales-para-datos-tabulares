@@ -1,0 +1,35 @@
+variable,tipo,coef_sustituto_rn,razon_odds_aprox,puntos,puntos_grad_origen,impacto_medio_abs_pts_IG
+revol_util,continua (+1 DE),0.3376,1.4016,-9.7419,-13.0728,7.6129
+annual_inc,continua (+1 DE),-0.299,0.7416,8.6261,13.0958,7.3016
+term_60m,indicador 0/1,0.9443,2.5709,-27.2459,-44.2357,7.2022
+open_acc,continua (+1 DE),0.2078,1.231,-5.9971,-7.9675,4.977
+loan_amnt,continua (+1 DE),0.1577,1.1708,-4.5492,-6.4261,4.5862
+inq_last_6mths,continua (+1 DE),0.2068,1.2297,-5.9663,-8.4889,4.3074
+total_acc,continua (+1 DE),-0.1602,0.852,4.6228,4.1587,3.111
+revol_bal,continua (+1 DE),-0.1249,0.8826,3.604,9.2699,2.9695
+pub_rec,continua (+1 DE),-0.0318,0.9687,0.9186,-10.4497,2.4553
+delinq_2yrs,continua (+1 DE),0.0526,1.054,-1.5173,-5.0434,1.7653
+emp_length_anios,continua (+1 DE),0.0493,1.0505,-1.4224,0.0457,1.4679
+dti,continua (+1 DE),0.0728,1.0755,-2.0991,-2.3053,1.4177
+ind_registro_publico,indicador 0/1,0.4214,1.5241,-12.1598,-30.0694,1.3054
+home_ownership_RENT,categoría vs MORTGAGE,0.1267,1.1351,-3.6559,-7.8813,1.1469
+purpose_credit_card,categoría vs debt_consolidation,-0.2069,0.8131,5.9706,4.2454,1.0724
+antiguedad_hist_anios,continua (+1 DE),-0.0178,0.9823,0.5143,0.8125,0.9942
+ind_mora_previa,indicador 0/1,0.0996,1.1047,-2.874,-2.9285,0.8712
+verification_status_Verified,categoría vs Not Verified,-0.0472,0.9539,1.3622,-4.327,0.578
+verification_status_Source Verified,categoría vs Not Verified,-0.0093,0.9908,0.2671,-1.8876,0.4041
+emp_length_nulo,indicador 0/1,0.2951,1.3433,-8.5151,-17.3211,0.3441
+purpose_other,categoría vs debt_consolidation,0.2095,1.233,-6.0446,-12.0334,0.3013
+home_ownership_OWN,categoría vs MORTGAGE,0.0838,1.0874,-2.4184,-6.9968,0.2773
+purpose_small_business,categoría vs debt_consolidation,0.7393,2.0944,-21.3305,-34.7365,0.2034
+purpose_major_purchase,categoría vs debt_consolidation,-0.2509,0.7781,7.24,4.6161,0.114
+purpose_medical,categoría vs debt_consolidation,0.3209,1.3784,-9.2589,-14.5517,0.1035
+purpose_home_improvement,categoría vs debt_consolidation,0.0344,1.035,-0.9932,-6.7376,0.0754
+purpose_moving,categoría vs debt_consolidation,0.1803,1.1975,-5.2014,-11.3473,0.0477
+purpose_vacation,categoría vs debt_consolidation,0.213,1.2374,-6.1465,-11.2246,0.0424
+purpose_car,categoría vs debt_consolidation,-0.2108,0.8099,6.0826,-0.1977,0.0378
+purpose_house,categoría vs debt_consolidation,0.1197,1.1272,-3.4543,-9.9896,0.0152
+purpose_renewable_energy,categoría vs debt_consolidation,0.4536,1.574,-13.0888,-18.692,0.0083
+purpose_wedding,categoría vs debt_consolidation,-0.1626,0.8499,4.6915,0.6739,0.0002
+home_ownership_OTRO,categoría vs MORTGAGE,0.2871,1.3326,-8.2848,-18.1229,0.0001
+purpose_educational,categoría vs debt_consolidation,0.2769,1.319,-7.9888,-17.873,0.0
