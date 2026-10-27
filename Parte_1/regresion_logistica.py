@@ -1,8 +1,8 @@
 """
-Tarea 3: regresión logística de referencia. Guarda modelos/regresion_logistica.joblib.
+Tarea 3: regresión logística de referencia. Guarda modelos/regresion_logistica.joblib y resultados/t3_resumen.csv.
 
-    python regresion_logistica.py
-    python regresion_logistica.py --C 0.1
+    python regresion_logistica.py            # busca C entre 10 valores (mismo presupuesto que la red)
+    python regresion_logistica.py --C 0.1    # un valor fijo, sin búsqueda
 """
 import argparse
 import os
@@ -13,6 +13,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import log_loss
 
 from metricas import tabla_metricas
 from preprocesamiento import preparar
@@ -20,7 +21,7 @@ from preprocesamiento import preparar
 os.chdir(os.path.dirname(os.path.abspath(__file__)))  # las rutas (data/, modelos/) son relativas a Parte_1
 
 parser = argparse.ArgumentParser(description="Regresión logística de referencia")
-parser.add_argument("--C", type=float, default=1.0, help="inverso de la penalización L2 (menor = más penalización)")
+parser.add_argument("--C", type=float, default=None, help="inverso de la penalización L2 (menor = más penalización); sin él se busca entre 10 valores")
 args = parser.parse_args()
 
 # 1. Datos: partición temporal + preprocesamiento ajustado solo con entrenamiento ------------
@@ -30,13 +31,23 @@ for nombre, parte in partes.items():
     print(f"  {nombre:<13} {len(parte):>8,} registros | tasa de malos {parte['malo'].mean():.3f} "
           f"| {parte['issue_d'].min():%Y-%m} a {parte['issue_d'].max():%Y-%m}")
 
-# 2. Ajuste ---------------------------------------------------------------------------------
-t0 = time.perf_counter()
-modelo = LogisticRegression(C=args.C, max_iter=1000).fit(X["entrenamiento"], y["entrenamiento"])
-segundos = time.perf_counter() - t0
+# 2. Búsqueda de C (mismo criterio y presupuesto que la red: 10 configuraciones, pérdida de validación) -----
+valores_C = [args.C] if args.C is not None else list(np.logspace(-4, 1, 10))
+filas, ajustes = [], []
+for C in valores_C:
+    t0 = time.perf_counter()
+    m = LogisticRegression(C=C, max_iter=1000).fit(X["entrenamiento"], y["entrenamiento"])
+    seg = time.perf_counter() - t0
+    perdida = log_loss(y["validacion"], m.predict_proba(X["validacion"])[:, 1])
+    filas.append({"C": C, "perdida_val": perdida, "segundos": seg})
+    ajustes.append(m)
+    print(f"  C = {C:.5f} | pérdida val {perdida:.4f} | {seg:.2f} s")
+busqueda = pd.DataFrame(filas)
+mejor = int(busqueda["perdida_val"].idxmin())
+modelo, C_elegido, segundos = ajustes[mejor], valores_C[mejor], filas[mejor]["segundos"]
 n_var = X["entrenamiento"].shape[1]
-print(f"\nMODELO: {n_var} variables + intercepto = {n_var + 1} parametros | C = {args.C} | "
-      f"1 configuracion | {segundos:.1f} s")
+print(f"\nMODELO: {n_var} variables + intercepto = {n_var + 1} parametros | C elegido = {C_elegido:.5f} | "
+      f"{len(valores_C)} configuraciones | búsqueda {busqueda['segundos'].sum():.1f} s")
 
 # 3. Evaluación -----------------------------------------------------------------------------
 probs = {k: modelo.predict_proba(X[k])[:, 1] for k in X}
@@ -55,3 +66,16 @@ print(tabla.reindex(coef.abs().sort_values(ascending=False).index).round(3).to_s
 Path("modelos").mkdir(exist_ok=True)
 joblib.dump({"preprocesador": prep, "modelo": modelo}, "modelos/regresion_logistica.joblib")
 print("\nModelo guardado en modelos/regresion_logistica.joblib")
+
+# 6. Búsqueda y resumen para la tabla comparativa (comparar) --------------------------------------
+Path("resultados").mkdir(exist_ok=True)
+busqueda.to_csv("resultados/t3_busqueda.csv", index=False)
+resumen = tabla_metricas(y, probs)[["AUC", "Gini", "KS", "Brier"]]
+resumen.insert(0, "particion", resumen.index)
+resumen.insert(0, "configuracion", f"C={C_elegido:.5f}")
+resumen.insert(2, "n_configuraciones", len(valores_C))
+resumen.insert(3, "tiempo_busqueda_s", round(busqueda["segundos"].sum(), 2))
+resumen.insert(4, "tiempo_final_s", round(segundos, 2))
+resumen.insert(5, "parametros", n_var + 1)
+resumen.to_csv("resultados/t3_resumen.csv", index=False)
+print("Guardado: resultados/t3_busqueda.csv y t3_resumen.csv")

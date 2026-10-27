@@ -5,43 +5,58 @@
 
 ```bash
 python -m venv .venv && .venv\Scripts\activate          # (Linux/Mac: source .venv/bin/activate)
-pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 
 cd Parte_1
-python main.py --demo      # todo el flujo en versión rápida (< 2 min)
-python main.py             # flujo completo (~5 min)
-python main.py --solo t4   # un paso: datos | t2 | t3 | t4 | t5
-python red_neuronal.py --busqueda 0 --capas 64 32 --lr 0.001 --dropout 0.2 --l2 1e-4 --semillas 5   # parámetros a mano
+python main.py todo        # flujo completo (~5 min): rl, rna, evaluar, scorecard, comparar
+python main.py todo --demo # versión rápida (< 2 min): rl, rna y evaluar
+python main.py --help      # lista de comandos con ejemplos
+python main.py rna --help  # opciones de un comando
 ```
 
-Los datos procesados ya están en el repositorio: no hace falta internet. Solo `--con-datos` los rehace desde `loan.csv`.
+## Aplicación web (scorecard)
+
+```bash
+streamlit run app.py       # desde la raíz del repositorio; abre http://localhost:8501
+```
+
+Carga `Parte_1/modelos/scorecard.joblib` y `red_neuronal.pt` (ya en el repositorio): no reentrena ni usa internet. 
+Entrega puntaje, PD, percentil frente a la población histórica y un simulador de cambios. 
+Para cambiar la scorecard: `python main.py scorecard --base 600 --odds 5 --pdo 20` y reiniciar la app. 
+Los enlaces al reporte y al video se pegan en `REPORTE_URL` y `VIDEO_URL` al inicio de `app.py`.
+
+**Despliegue gratis (Streamlit Community Cloud):** subir el repositorio a GitHub, entrar a share.streamlit.io, 
+*Create app* → elegir repositorio y rama, *Main file path* = `app.py`, Python 3.12 en *Advanced settings* → Deploy. 
+Instala solo `requirements.txt` y no necesita los datos grandes (`data/`).
+
+## Orden de ejecución y qué genera cada comando
+
+Todo se lanza desde `Parte_1/` con `python main.py <comando> [opciones]`. Las opciones se pasan al script del comando.
+
+| # | Comando | Script | Lee | Escribe |
+|---|---|---|---|---|
+| 0 | `datos` (solo si se quiere rehacer; necesita `loan.csv` de Kaggle) | `preparacion_datos.py` | `loan.csv` | `data/datos_modelo.csv`, `data/base_lgd.csv` |
+| 1 | `rl` regresión logística (T3; busca `C` en 10 valores) | `regresion_logistica.py` | `data/datos_modelo.csv` | `modelos/regresion_logistica.joblib`, `resultados/t3_busqueda.csv`, `t3_resumen.csv` |
+| 2 | `rna` red neuronal (T4) | `red_neuronal.py` | `data/datos_modelo.csv` | `modelos/red_neuronal.pt`, `resultados/t4_busqueda.csv`, `t4_semillas.csv` (el resumen se imprime en consola) |
+| 3 | `evaluar` (T5) | `evaluacion.py` | datos + los dos modelos | `resultados/t5_metricas.csv`, `t5_particiones.csv`, `figuras/t5_calibracion.png`, `t5_roc.png` |
+| 4 | `scorecard` (T6) | `scorecard_red_neuronal.py` | datos + `red_neuronal.pt` | `modelos/scorecard.joblib`, `resultados/t6_rn_puntos_variables.csv` |
+| 5 | `comparar` | `comparar.py` | `t3_resumen.csv`, `t4_*.csv`, `red_neuronal.pt` | `resultados/comparacion.csv` (una sola tabla: configuraciones, tiempo, parámetros, semillas, media/desv/mejor/peor) |
+
+Comparación justa: ambos modelos usan las mismas particiones y el mismo preprocesamiento, prueban 10 configuraciones elegidas por pérdida de validación y reportan tiempo de búsqueda y de entrenamiento final por separado (`comparar`).
+
+`todo` corre 1 a 5 (no incluye `datos`). Con `--demo`, `rna` y `evaluar` escriben archivos `*_demo.*` (ignorados por git) y no pisan los reales.
+Los datos procesados y los modelos entrenados están en el repositorio: no hace falta internet ni reentrenar para evaluar.
 Semillas: la partición es temporal (sin azar), la búsqueda usa la semilla 0 y la red final las semillas 0..29.
 
-## Qué hace cada archivo
+Apoyo (no se ejecutan solos): `preprocesamiento.py` (partición temporal + estandarización, igual para todos los modelos; también lo usa `Parte_2`) y `metricas.py`.
 
-| Paso | Script | Lee | Escribe |
-|---|---|---|---|
-| datos | `preparacion_datos.py` | `loan.csv` (Kaggle) | `data/datos_modelo.csv`, `data/base_lgd.csv` |
-| T2 hipótesis | `analisis_descriptivo.py` | `datos_modelo.csv` | `resultados/t2_hipotesis.csv`, `figuras/t2_hipotesis.png` |
-| T3 regresión logística | `regresion_logistica.py` | `datos_modelo.csv` | `modelos/regresion_logistica.joblib` |
-| T4 red neuronal | `red_neuronal.py` | `datos_modelo.csv` | `modelos/red_neuronal.pt`, `resultados/t4_*` |
-| T5 evaluación | `evaluacion.py` | datos + los dos modelos | `resultados/t5_*`, `figuras/t5_*` |
+## Carpetas
 
-Apoyo: `preprocesamiento.py` (partición temporal + estandarización, igual para todos los modelos) y `metricas.py`.
-
-**Carpeta `modelos/`**: modelos ya entrenados. No se usan a mano: `evaluacion.py` los carga (y la scorecard y la app web los cargarán)
-con `joblib.load("modelos/regresion_logistica.joblib")` y `red_neuronal.cargar_red()`. Así nadie reentrena.
-
-**Carpeta `resultados/`** (alimentan las tablas del reporte):
-`t2_hipotesis.csv` veredicto de H1-H6 · `t4_busqueda.csv` las 10 configuraciones probadas ·
-`t4_semillas.csv` métricas de las 30 semillas · `t4_resumen.txt` media/desv/mejor/peor, parámetros y tiempo ·
-`t5_metricas.csv` AUC/Gini/KS/Brier de ambos modelos · `t5_particiones.csv` tamaño y periodo de cada partición.
-
-`Parte_2/` está vacía (ver su README). `legacy/` es el código anterior, solo de consulta. `CAMBIOS.md` explica qué se movió.
-Caso de uso e hipótesis: `CASO_DE_USO.md`.
-
-Pendiente de la Parte 1: scorecard y variables de riesgo (T6-T7).
+```
+Parte_1/  scripts de arriba · data/ (datos procesados) · modelos/ (modelos entrenados) · resultados/ (tablas) · figuras/
+Parte_2/  pérdida dado incumplimiento (importa de Parte_1: no mover archivos de Parte_1)
+legacy/   código anterior de la red, solo de consulta
+```
 
 ---
 

@@ -1,7 +1,7 @@
 """
 Tarea 4: red neuronal (MLP) para la probabilidad de incumplimiento.
 Búsqueda aleatoria de hiperparámetros y luego 30 semillas con la mejor configuración.
-Guarda modelos/red_neuronal.pt y resultados/t4_*.csv|txt.
+Guarda modelos/red_neuronal.pt y resultados/t4_busqueda.csv, t4_semillas.csv (el resumen se imprime en consola).
 
     python red_neuronal.py --demo        # rápido
     python red_neuronal.py --busqueda 0 --capas 64 32 --lr 0.001 --dropout 0.2 --l2 1e-4   # sin búsqueda
@@ -221,7 +221,6 @@ def main():
         resumen.loc["Brier", ["mejor", "peor"]] = [tabla["Brier"].min(), tabla["Brier"].max()]  # Brier: menor es mejor
         lineas += [f"[{nombre}]", resumen.round(4).to_string(), ""]
     texto = "\n".join(lineas)
-    open(f"resultados/t4_resumen{sufijo}.txt", "w", encoding="utf-8").write(texto)
     print("\n" + texto)
 
 

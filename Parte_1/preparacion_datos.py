@@ -13,54 +13,16 @@ import os
 
 import pandas as pd
 
-# ---------------------------------------------------------------
-# GRUPOS DE VARIABLES (documentan qué se usa y qué se excluye y por qué; solo PREDICTORAS y A_TRANSFORMAR se usan)
-# ---------------------------------------------------------------
-# Se usan tal cual
+# Predictoras que se usan directamente; el resto de las usadas se transforman en construir_dataset.
 PREDICTORAS = [
     "loan_amnt", "purpose", "home_ownership", "annual_inc", "verification_status", "dti",
     "delinq_2yrs", "inq_last_6mths", "open_acc", "pub_rec", "revol_bal", "revol_util", "total_acc",
 ]
-# Se usan, pero convertidas a otra forma 
-A_TRANSFORMAR = [
-    "term",                     # texto "36 months" / "60 months" -> indicador de 60 meses
-    "emp_length",               # texto "10+ years" -> número de años
-    "earliest_cr_line",         # fecha -> antigüedad del historial
-    "mths_since_last_delinq",   # su nulo significa "nunca tuvo mora": se vuelve indicador
-    "mths_since_last_record",   # su nulo significa "nunca tuvo registro público": indicador
-    "issue_d",                  # fecha del crédito: sirve para dividir en el tiempo, no es predictora
-]
-
-OBJETIVO = ["loan_status"]
-
-# FUTURO: solo se conocen DESPUÉS de dar el crédito. Usarlas sería hacer trampa:
-# el modelo vería el resultado antes de predecirlo.
-POSTERIORES = [
-    "out_prncp", "out_prncp_inv", "total_pymnt", "total_pymnt_inv", "total_rec_prncp",
-    "total_rec_int", "total_rec_late_fee", "recoveries", "collection_recovery_fee",
-    "last_pymnt_d", "last_pymnt_amnt", "next_pymnt_d", "last_credit_pull_d", "pymnt_plan",
-]
-
-# Decisiones de Lending Club: el solicitante no las conoce al aplicar
-PLATAFORMA = ["grade", "sub_grade", "int_rate", "installment", "funded_amnt", "funded_amnt_inv"]
-
-# Casi vacías (más de 97 % de nulos)
-MUCHOS_NULOS = [
-    "dti_joint", "annual_inc_joint", "verification_status_joint", "il_util", "mths_since_rcnt_il",
-    "inq_fi", "open_rv_24m", "open_acc_6m", "all_util", "inq_last_12m", "total_cu_tl",
-    "open_il_12m", "max_bal_bc", "open_il_6m", "open_il_24m", "open_rv_12m", "total_bal_il",
-]
-
-NO_APORTAN = ["policy_code", "application_type", "initial_list_status"]
-IDENTIFICADORES_TEXTO = ["id", "member_id", "url", "desc", "title", "emp_title"]
-GEOGRAFIA = ["zip_code", "addr_state"]  # posible proxy de características protegidas
-
-# Podrían servir en una versión mejorada, pero no en el modelo básico
-OTRAS = [
-    "tot_cur_bal", "tot_coll_amt", "total_rev_hi_lim",
-    "collections_12_mths_ex_med", "acc_now_delinq", "mths_since_last_major_derog",
-]
-
+# Se excluyen (caso de uso: solo información disponible al solicitar, sin fuga de datos):
+#   - posteriores al desembolso: out_prncp*, total_pymnt*, total_rec_*, recoveries, collection_recovery_fee,
+#     last_pymnt_*, next_pymnt_d, last_credit_pull_d, pymnt_plan
+#   - decisiones de la plataforma: grade, sub_grade, int_rate, installment, funded_amnt*
+#   - casi vacías (>97 % nulos), constantes, identificadores/texto libre y geografía (posible proxy de variables protegidas)
 
 # Variable objetivo: malo = 1, bueno = 0
 MAPA_OBJETIVO = {
