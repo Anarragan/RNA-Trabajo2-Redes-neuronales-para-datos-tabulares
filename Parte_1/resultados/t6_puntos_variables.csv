@@ -1,35 +1,35 @@
-variable,tipo,coeficiente,razon_de_odds,puntos
-term_60m,indicador 0/1,1.0638,2.8974,-30.6954
-purpose_small_business,categoría vs debt_consolidation,0.8202,2.271,-23.6662
-ind_registro_publico,indicador 0/1,0.4836,1.6219,-13.954
-revol_util,continua (+1 DE),0.3608,1.4345,-10.4116
-annual_inc,continua (+1 DE),-0.3336,0.7163,9.6267
-purpose_vacation,categoría vs debt_consolidation,0.3324,1.3943,-9.5916
-emp_length_nulo,indicador 0/1,0.3272,1.3871,-9.4423
-purpose_educational,categoría vs debt_consolidation,0.3266,1.3863,-9.4248
-home_ownership_OTRO,categoría vs MORTGAGE,0.326,1.3854,-9.4061
-purpose_renewable_energy,categoría vs debt_consolidation,0.3213,1.3789,-9.27
-purpose_medical,categoría vs debt_consolidation,0.2778,1.3203,-8.0169
-purpose_credit_card,categoría vs debt_consolidation,-0.2616,0.7698,7.5493
-purpose_other,categoría vs debt_consolidation,0.2563,1.2922,-7.3964
-purpose_moving,categoría vs debt_consolidation,0.2551,1.2906,-7.3613
-inq_last_6mths,continua (+1 DE),0.2277,1.2558,-6.5713
-purpose_house,categoría vs debt_consolidation,0.2216,1.248,-6.393
-purpose_car,categoría vs debt_consolidation,-0.2199,0.8026,6.346
-loan_amnt,continua (+1 DE),0.212,1.2361,-6.1163
-open_acc,continua (+1 DE),0.1923,1.212,-5.5489
-purpose_wedding,categoría vs debt_consolidation,-0.1792,0.836,5.1697
-purpose_major_purchase,categoría vs debt_consolidation,-0.1643,0.8485,4.7412
-revol_bal,continua (+1 DE),-0.1373,0.8717,3.9611
-total_acc,continua (+1 DE),-0.1164,0.8902,3.3574
-home_ownership_RENT,categoría vs MORTGAGE,0.1123,1.1189,-3.2412
-ind_mora_previa,indicador 0/1,0.1083,1.1144,-3.1243
-emp_length_anios,continua (+1 DE),0.071,1.0736,-2.0492
-home_ownership_OWN,categoría vs MORTGAGE,0.0592,1.061,-1.7094
-dti,continua (+1 DE),0.0563,1.0579,-1.6237
-delinq_2yrs,continua (+1 DE),0.0414,1.0423,-1.1953
-purpose_home_improvement,categoría vs debt_consolidation,0.0322,1.0328,-0.9305
-verification_status_Source Verified,categoría vs Not Verified,0.0294,1.0298,-0.848
-pub_rec,continua (+1 DE),-0.0264,0.974,0.7605
-antiguedad_hist_anios,continua (+1 DE),-0.018,0.9822,0.5196
-verification_status_Verified,categoría vs Not Verified,-0.0131,0.987,0.3772
+variable,impacto_pts,direccion
+term_60m,8.2101,-0.9812
+annual_inc,6.2604,0.9604
+revol_util,5.596,-0.9408
+open_acc,4.2188,-0.9253
+loan_amnt,4.1975,-0.9449
+inq_last_6mths,3.2873,-0.9461
+total_acc,2.7992,0.9314
+revol_bal,2.6601,0.934
+pub_rec,2.4987,0.7823
+ind_registro_publico,1.6271,-0.9752
+purpose_credit_card,1.5271,0.9543
+emp_length_anios,1.3456,-0.5149
+dti,1.1407,-0.8378
+ind_mora_previa,1.0836,0.3369
+delinq_2yrs,1.0708,-0.4934
+home_ownership_RENT,0.9919,-0.7052
+purpose_small_business,0.8546,-0.953
+antiguedad_hist_anios,0.8214,0.1056
+verification_status_Verified,0.8139,0.6474
+purpose_other,0.7066,-0.8834
+emp_length_nulo,0.4745,-0.9422
+verification_status_Source Verified,0.4626,0.4225
+home_ownership_OWN,0.3272,-0.6259
+purpose_major_purchase,0.2617,0.9708
+purpose_medical,0.1991,-0.904
+purpose_home_improvement,0.1527,0.0798
+purpose_moving,0.1014,-0.9329
+purpose_vacation,0.092,-0.9406
+purpose_car,0.0888,0.8969
+purpose_house,0.06,-0.7921
+purpose_educational,0.0474,
+purpose_wedding,0.0305,0.7365
+purpose_renewable_energy,0.0277,-0.9584
+home_ownership_OTRO,0.0204,-0.9412

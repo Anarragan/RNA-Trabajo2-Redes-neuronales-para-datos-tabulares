@@ -1,6 +1,6 @@
 Configuración: {'capas': [128, 64], 'activacion': 'relu', 'dropout': 0.4, 'optimizador': 'adam', 'l2': 0.0, 'lr': 0.01}
 Parámetros entrenables: 12801
-Presupuesto: 10 configuraciones en la búsqueda (58 s) + 30 semillas (180 s); tiempo total 253 s
+Presupuesto: 10 configuraciones en la búsqueda (55 s) + 30 semillas (159 s); tiempo total 228 s
 Modelo guardado: semilla 13 (mejor AUC de validación)
 
 [entrenamiento]
