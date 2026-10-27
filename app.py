@@ -16,10 +16,10 @@ import streamlit as st
 
 RAIZ = Path(__file__).parent
 sys.path.insert(0, str(RAIZ / "Parte_1"))   # el .joblib guarda un Preprocesador de Parte_1/preprocesamiento.py
-from red_neuronal import cargar_red          # noqa: E402
-from scorecard_red_neuronal import logits, puntos_por_variable   # noqa: E402
+from Parte_1.red_neuronal import cargar_red  
+from Parte_1.scorecard_red_neuronal import logits, puntos_por_variable   
 
-REPORTE_URL = ""   # pegar aquí el enlace del reporte técnico
+REPORTE_URL = "https://anarragan.github.io/RNA-Informe-blog/blog-2/index.html" 
 VIDEO_URL = ""     # pegar aquí el enlace del video promocional
 
 PROPOSITOS = {"debt_consolidation": "Consolidar deudas", "credit_card": "Pagar tarjeta de crédito",
@@ -57,7 +57,7 @@ def percentil(puntaje, sc):
 
 st.set_page_config(page_title="Scorecard de crédito", page_icon="💳", layout="wide")
 sc, red = cargar()
-st.title("💳 ¿Qué tan riesgoso es tu crédito?")
+st.title("¿Qué tan riesgoso es tu crédito?")
 st.write(f"Una red neuronal entrenada con créditos de Lending Club (2007-2015) estima tu probabilidad de incumplimiento "
          f"y la convierte en un **puntaje**: base {sc['base']} puntos = {sc['odds']} buenos por cada malo; "
          f"cada **+{sc['pdo']} puntos duplican** esa proporción. Más puntos, menos riesgo.")
