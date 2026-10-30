@@ -1,0 +1,7 @@
+Hipotesis,Variable,Supuesto,EDA_decil_bajo_%,EDA_decil_alto_%,EDA_delta_pp,EDA_es_monotono,Modelo_impacto,Modelo_direccion,Veredicto
+H1,dti,+ riesgo,14.92,33.92,19.0,True,0.94,-0.7091,Confirmada (fuerte)
+H2,annual_inc,− riesgo,28.08,16.19,11.89,True,4.19,0.9735,Confirmada (fuerte)
+H3,delinq_2yrs,+ riesgo,21.38,28.15,6.78,True,1.66,-0.9612,Confirmada (débil)
+H4,antiguedad_hist_anios,− riesgo,23.87,21.1,2.77,False,1.17,0.442,Confirmada (débil)
+H5,purpose,Variable,14.17,32.29,18.13,False,1.79,-0.9989,Confirmada. Menor: wedding (14.2%); Mayor: small_business (32.3%)
+H6,home_ownership,RENT > MORTGAGE > OWN,22.97,24.41,1.45,False,0.37,-0.6252,Revisar: orden real 24.4% > 23.0% > 19.6% (RENT > OWN > MORTGAGE)
