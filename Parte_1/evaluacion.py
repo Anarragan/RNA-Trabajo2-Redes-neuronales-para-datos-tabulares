@@ -39,6 +39,36 @@ def umbral_por_costos(y_val, p_val, razon):
     return grilla[int(np.argmin(costos))]
 
 
+def graficar_confusion(conf, ruta, particion="prueba"):
+    """Una matriz de confusión por modelo (fila) y razón de costos (columna). Cada celda muestra el
+    conteo y el porcentaje de su fila (de los malos reales, cuántos se detectan; de los buenos, cuántos se aprueban)."""
+    conf = conf[conf["particion"] == particion]
+    modelos, razones = list(conf["modelo"].unique()), sorted(conf["razon_costos"].unique())
+    fig, ejes = plt.subplots(len(modelos), len(razones), figsize=(3.6 * len(razones), 3.4 * len(modelos)), squeeze=False)
+    for i, modelo in enumerate(modelos):
+        for j, razon in enumerate(razones):
+            r = conf[(conf["modelo"] == modelo) & (conf["razon_costos"] == razon)].iloc[0]
+            m = np.array([[r["TN"], r["FP"]], [r["FN"], r["TP"]]])   # filas: real bueno/malo; columnas: aprobar/rechazar
+            pct = m / m.sum(axis=1, keepdims=True)
+            eje = ejes[i, j]
+            eje.imshow(pct, cmap="Blues", vmin=0, vmax=1)
+            for a in range(2):
+                for b in range(2):
+                    eje.text(b, a, f"{m[a, b]:,}\n{pct[a, b]:.1%}", ha="center", va="center",
+                             color="white" if pct[a, b] > 0.5 else "black")
+            eje.set_xticks([0, 1], ["aprobar", "rechazar"])
+            eje.set_yticks([0, 1], ["bueno", "malo"])
+            eje.set_title(f"{modelo}\nFN = {razon}x FP | umbral {r['umbral']:.3f}", fontsize=9)
+            if j == 0:
+                eje.set_ylabel("real")
+            if i == len(modelos) - 1:
+                eje.set_xlabel("decisión")
+    fig.suptitle(f"Matriz de confusión en {particion} (umbral elegido en validación; % por fila real)")
+    fig.tight_layout()
+    fig.savefig(ruta, dpi=130)
+    plt.close(fig)
+
+
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))  # las rutas son relativas a Parte_1
     p = argparse.ArgumentParser(description="Tarea 5: evaluación de los modelos")
@@ -90,6 +120,8 @@ def main():
     conf.to_csv(f"resultados/t5_confusion{sufijo}.csv", index=False)
     print("\nMATRIZ DE CONFUSIÓN (umbral elegido en validación)\n" + conf.round(3).to_string(index=False))
 
+    graficar_confusion(conf, f"figuras/t5_confusion{sufijo}.png")
+
     # 4. Curva de calibración: probabilidad predicha vs. tasa observada, por deciles ------------------
     fig, ejes = plt.subplots(1, 3, figsize=(13, 4), sharex=True, sharey=True)
     for eje, nombre in zip(ejes, X):
@@ -115,7 +147,7 @@ def main():
     eje.legend()
     fig.tight_layout()
     fig.savefig(f"figuras/t5_roc{sufijo}.png", dpi=130)
-    print(f"\nFiguras en figuras/t5_calibracion{sufijo}.png y figuras/t5_roc{sufijo}.png")
+    print(f"\nFiguras en figuras/t5_confusion{sufijo}.png, figuras/t5_calibracion{sufijo}.png y figuras/t5_roc{sufijo}.png")
 
 
 if __name__ == "__main__":
