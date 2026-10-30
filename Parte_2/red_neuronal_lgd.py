@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 import time
+from pathlib import Path
 
 import joblib
 import numpy as np
@@ -11,9 +12,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-# Aseguramos que el directorio de trabajo sea Parte_2 y añadimos Parte_1 a la ruta de modulos
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../Parte_1")))
+CARPETA = Path(__file__).resolve().parent
+if str(CARPETA.parent / "Parte_1") not in sys.path:
+    sys.path.append(str(CARPETA.parent / "Parte_1"))
 
 # Importamos la particion temporal unificada
 from preprocesamiento import partir
@@ -103,8 +104,8 @@ def predecir_lgd(modelo, X):
 def cargar_red_lgd(ruta=None):
     """Carga el modelo guardado reconstruyendo dinámicamente su arquitectura."""
     if ruta is None:
-        ruta = "modelos/red_neuronal_lgd.pt"
-    guardado = torch.load(ruta, map_location=DISPOSITIVO, weights_only=False)
+        ruta = str(CARPETA / "modelos" / "red_neuronal_lgd.pt")
+    guardado = torch.load(str(ruta), map_location=DISPOSITIVO, weights_only=False)
     c = guardado["config"]
     modelo = RedNeuronalLGD(
         guardado["n_entrada"],
@@ -258,6 +259,7 @@ def entrenar_semillas_finales(config, datos, X, y, n_semillas=N_SEMILLAS, epocas
 
 
 def main():
+    os.chdir(CARPETA)
     parser = argparse.ArgumentParser(description="Tarea 3 (Parte 2): Red Neuronal MLP para LGD")
     parser.add_argument("--demo", action="store_true", help="versión rápida (< 30 s: configuración base y 3 semillas)")
     parser.add_argument("--semillas", type=int, default=30, help="semillas para entrenar la red final (defecto: 30)")
