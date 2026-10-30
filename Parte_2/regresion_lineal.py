@@ -1,88 +1,86 @@
-# Importamos os para la creacion y verificacion de carpetas de salida
+import argparse
 import os
-
-# Importamos sys para modificar las rutas de importacion de modulos
 import sys
 
-# Importamos joblib para serializar y guardar el modelo entrenado y el preprocesador
 import joblib
-
-# Importamos numpy para el acotamiento de predicciones
 import numpy as np
-
-# Importamos pandas para la manipulacion de datos
 import pandas as pd
-
-# Importamos las clases base de scikit-learn para crear un estimador personalizado
 from sklearn.base import BaseEstimator, RegressorMixin
-
-# Importamos la regresion Ridge como modelo lineal regularizado
 from sklearn.linear_model import Ridge
 
-# Añadimos la carpeta Parte_1 a la ruta para reutilizar sus modulos
-sys.path.append("../Parte_1")
+# Aseguramos que el directorio de trabajo sea Parte_2 y añadimos Parte_1 a la ruta para reutilizar sus modulos
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../Parte_1")))
 
 # Importamos la particion temporal y el preprocesador oficial de la Parte 1
 from preprocesamiento import Preprocesador, partir
 
 
-# Clase de regresion Ridge acotada en [0, 1] para la LGD
 class RegresionRidgeAcotada(BaseEstimator, RegressorMixin):
 
-    # Metodo constructor con parametro de regularizacion L2 (alpha)
     def __init__(self, alpha=1.0):
-        # Guardamos el hiperparametro alpha
         self.alpha = alpha
-        # Instanciamos el modelo Ridge de scikit-learn
         self.model = Ridge(alpha=self.alpha)
 
-    # Metodo de ajuste sobre los datos de entrenamiento
     def fit(self, X, y):
-        # Entrenamos la regresion Ridge con las caracteristicas X y la meta y
         self.model.fit(X, y)
-        # Retornamos la instancia entrenada
         return self
 
-    # Metodo de prediccion acotado
     def predict(self, X):
-        # Generamos las predicciones lineales continuas
         predicciones = self.model.predict(X)
         # Truncamos las predicciones en el rango [0.0, 1.0] para respetar el dominio de la LGD
         return np.clip(predicciones, 0.0, 1.0)
 
-def entrenar_modelo_referencia():
-    # 1. Leemos el DataFrame de la LGD procesada parseando la columna de fechas
-    df = pd.read_csv("resultados/lgd_procesado.csv", parse_dates=["issue_d"])
 
-    # 2. Aplicamos la particion temporal (obtenemos un diccionario de DataFrames)
+def cargar_modelo_referencia(ruta="modelos/regresion_lineal.joblib"):
+    """Carga el modelo de referencia garantizando compatibilidad de serialización."""
+    import __main__
+    __main__.RegresionRidgeAcotada = RegresionRidgeAcotada
+    return joblib.load(ruta)
+
+
+def entrenar_modelo_referencia(alpha=1.0):
+    """
+    Entrena el modelo lineal de referencia (Ridge acotado en [0, 1]) para LGD.
+
+    Args:
+        alpha (float): Parámetro de penalización L2 para la regresión Ridge (defecto: 1.0).
+
+    Returns:
+        None: Guarda el modelo entrenado en modelos/regresion_lineal.joblib y el preprocesador en modelos/preprocesador_lgd.joblib.
+    """
+    df = pd.read_csv("resultados/lgd_procesado.csv", parse_dates=["issue_d"])
     partes = partir(df)
     train = partes["entrenamiento"]
 
-    # 3. Instanciamos el preprocesador oficial
     prep = Preprocesador()
-
-    # 4. Separamos las variables predictoras (X) y el objetivo (y)
-    X_train_raw = train.drop(columns=["target_lgd", "issue_d"])
+    X_train_raw = train.drop(columns=["target_lgd", "issue_d", "funded_amnt"])
     y_train = train["target_lgd"].values
 
-    # 5. Ajustamos el preprocesador con X_train y transformamos
     prep.fit(X_train_raw)
     X_train = prep.transform(X_train_raw)
 
-    # 6. Instanciamos y entrenamos la regresion Ridge acotada
-    modelo = RegresionRidgeAcotada(alpha=1.0)
+    #Entrenamiento
+    modelo = RegresionRidgeAcotada(alpha=alpha)
     modelo.fit(X_train, y_train)
 
-    # 7. Creamos la carpeta modelos si no existe y guardamos los artefactos
     os.makedirs("modelos", exist_ok=True)
     joblib.dump(modelo, "modelos/regresion_lineal.joblib")
     joblib.dump(prep, "modelos/preprocesador_lgd.joblib")
 
+    n_params = len(modelo.model.coef_) + 1
     print(
-        "[OK] Modelo de referencia (Regresion Lineal/Ridge) entrenado y guardado exitosamente."
+        f"[OK] Modelo de referencia (Regresion Lineal/Ridge acotada) entrenado exitosamente. "
+        f"Parámetros: {n_params} (alpha={alpha}). Guardado en modelos/regresion_lineal.joblib"
     )
 
-# Punto de entrada de ejecucion independiente
+
+def main():
+    parser = argparse.ArgumentParser(description="Tarea 2 (Parte 2): Modelo de referencia Ridge para LGD")
+    parser.add_argument("--alpha", type=float, default=1.0, help="inverso de la regularización L2 / alpha de Ridge (defecto: 1.0)")
+    args = parser.parse_args()
+    entrenar_modelo_referencia(alpha=args.alpha)
+
+
 if __name__ == "__main__":
-    # Ejecutamos el entrenamiento del modelo de referencia
-    entrenar_modelo_referencia()
+    main()

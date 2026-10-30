@@ -7,11 +7,21 @@
 python -m venv .venv && .venv\Scripts\activate          # (Linux/Mac: source .venv/bin/activate)
 pip install -r requirements.txt
 
+# --- PARTE 1: Probabilidad de Incumplimiento (PD) ---
 cd Parte_1
 python main.py todo        # flujo completo (~5 min): rl, rna, evaluar, scorecard, comparar
 python main.py todo --demo # versión rápida (< 2 min): rl, rna y evaluar
 python main.py --help      # lista de comandos con ejemplos
-python main.py rna --help  # opciones de un comando
+python main.py rna --help  # opciones de un comando (capas, lr, dropout, etc.)
+cd ..
+
+# --- PARTE 2: Pérdida Dado el Incumplimiento (LGD) y Pérdida Esperada E[L] ---
+cd Parte_2
+python main.py todo        # flujo completo (~3-4 min): datos, rl, rna, evaluar
+python main.py todo --demo # versión rápida (< 1 min): rna sobre 3 semillas
+python main.py --help      # lista de comandos con ejemplos
+python main.py rna --help  # opciones de la red de LGD (capas, lr, dropout, etc.)
+cd ..
 ```
 
 ## Aplicación web (scorecard)
@@ -31,6 +41,8 @@ Instala solo `requirements.txt` y no necesita los datos grandes (`data/`).
 
 ## Orden de ejecución y qué genera cada comando
 
+### Parte 1: Probabilidad de Incumplimiento (`Parte_1/`)
+
 Todo se lanza desde `Parte_1/` con `python main.py <comando> [opciones]`. Las opciones se pasan al script del comando.
 
 | # | Comando | Script | Lee | Escribe |
@@ -45,6 +57,21 @@ Todo se lanza desde `Parte_1/` con `python main.py <comando> [opciones]`. Las op
 Comparación justa: ambos modelos usan las mismas particiones y el mismo preprocesamiento, prueban 10 configuraciones elegidas por pérdida de validación y reportan tiempo de búsqueda y de entrenamiento final por separado (`comparar`).
 
 `todo` corre 1 a 5 (no incluye `datos`). Con `--demo`, `rna` y `evaluar` escriben archivos `*_demo.*` (ignorados por git) y no pisan los reales.
+
+### Parte 2: Pérdida Dado el Incumplimiento y Pérdida Esperada (`Parte_2/`)
+
+Todo se lanza desde `Parte_2/` con `python main.py <comando> [opciones]`.
+
+| # | Comando | Script | Lee | Escribe |
+|---|---|---|---|---|
+| 0 | `datos` construcción objetivo LGD | `construccion_lgd.py` | `../Parte_1/data/base_lgd.csv` | `resultados/lgd_procesado.csv` |
+| 1 | `rl` regresión lineal Ridge acotada (T2) | `regresion_lineal.py` | `resultados/lgd_procesado.csv` | `modelos/regresion_lineal.joblib`, `modelos/preprocesador_lgd.joblib` |
+| 2 | `rna` red neuronal MLP para LGD (T3) | `red_neuronal_lgd.py` | `resultados/lgd_procesado.csv` | `modelos/red_neuronal_lgd.pt`, `resultados/t4_resumen.txt` |
+| 3 | `evaluar` y Pérdida Esperada (T4-T5) | `evaluacion.py` | datos + modelos | `figuras/t4_distribucion_lgd.png`, `resultados/t4_predicciones_lgd.csv`, `resultados/t5_perdida_esperada.csv` |
+| 4 | `comparar` | `comparar.py` | datos + modelos | `resultados/comparacion_lgd.csv` |
+
+`todo` corre del 0 al 4 en orden. Con `--demo`, `rna` y `evaluar` corren en versión rápida (< 30 s).
+
 Los datos procesados y los modelos entrenados están en el repositorio: no hace falta internet ni reentrenar para evaluar.
 Semillas: la partición es temporal (sin azar), la búsqueda usa la semilla 0 y la red final las semillas 0..29.
 
@@ -53,8 +80,9 @@ Apoyo (no se ejecutan solos): `preprocesamiento.py` (partición temporal + estan
 ## Carpetas
 
 ```
-Parte_1/  scripts de arriba · data/ (datos procesados) · modelos/ (modelos entrenados) · resultados/ (tablas) · figuras/
-Parte_2/  pérdida dado incumplimiento (importa de Parte_1: no mover archivos de Parte_1)
+Parte_1/  scripts de PD · data/ (datos procesados) · modelos/ · resultados/ · figuras/
+Parte_2/  scripts de LGD y E[L] · modelos/ · resultados/ · figuras/
+app.py    aplicación web Streamlit interactiva
 legacy/   código anterior de la red, solo de consulta
 ```
 
