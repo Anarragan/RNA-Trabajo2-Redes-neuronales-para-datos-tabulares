@@ -24,6 +24,7 @@ Salidas:
   resultados/t4_curvas.csv         pérdida de entrenamiento y validación por época (semilla 0)
   resultados/t4_importancia.csv    caída de AUC en validación al barajar cada variable
 """
+import argparse
 import os
 import time
 
@@ -104,7 +105,7 @@ def cargar_red(ruta="modelos/red_neuronal.pt"):
 
 
 # ----------------------------- ENTRENAMIENTO -----------------------------
-def entrenar(config, datos, semilla):
+def entrenar(config, datos, semilla, max_epocas=EPOCAS):
     """Mini-lotes con parada temprana sobre la pérdida de validación.
 
     datos = (X_ent, y_ent, X_val, y_val) como tensores. Devuelve (modelo con los mejores pesos,
@@ -121,7 +122,7 @@ def entrenar(config, datos, semilla):
 
     t0 = time.perf_counter()
     mejor_val, sin_mejora, historial, mejores_pesos = float("inf"), 0, [], None
-    for epoca in range(1, EPOCAS + 1):
+    for epoca in range(1, max_epocas + 1):
         modelo.train()
         orden = torch.randperm(len(X_ent), device=DISPOSITIVO)
         acumulada = 0.0
@@ -184,13 +185,13 @@ def buscar(datos):
     return mejor, float(tabla["segundos"].sum()), tabla
 
 
-def entrenar_semillas(config, datos, X, y):
+def entrenar_semillas(config, datos, X, y, n_semillas=N_SEMILLAS, max_epocas=EPOCAS, sufijo=""):
     """Entrena la configuración final con N_SEMILLAS semillas y guarda métricas, probabilidades y curvas."""
-    print(f"\nENTRENAMIENTO FINAL ({N_SEMILLAS} semillas)")
+    print(f"\nENTRENAMIENTO FINAL ({n_semillas} semillas)")
     registros, probs = [], {nombre: [] for nombre in X}
     mejor_auc, mejor_modelo, mejor_semilla, curvas, t_total = -1, None, None, None, 0.0
-    for semilla in range(N_SEMILLAS):
-        modelo, _, epocas, seg, historial = entrenar(config, datos, semilla)
+    for semilla in range(n_semillas):
+        modelo, _, epocas, seg, historial = entrenar(config, datos, semilla, max_epocas=max_epocas)
         t_total += seg
         if semilla == 0:
             curvas = pd.DataFrame(historial, columns=["epoca", "perdida_ent", "perdida_val"])
@@ -205,11 +206,10 @@ def entrenar_semillas(config, datos, X, y):
             mejor_auc, mejor_modelo, mejor_semilla = auc_val, modelo, semilla
         print(f"  semilla {semilla:>2} | AUC val {auc_val:.4f} | {epocas:>2} épocas | {seg:5.1f} s")
     semillas = pd.DataFrame(registros)
-    semillas.to_csv("resultados/t4_semillas.csv", index=False)
-    curvas.to_csv("resultados/t4_curvas.csv", index=False)
-    np.savez_compressed("resultados/t4_probs.npz", **{k: np.array(v) for k, v in probs.items()})
+    semillas.to_csv(f"resultados/t4_semillas{sufijo}.csv", index=False)
+    curvas.to_csv(f"resultados/t4_curvas{sufijo}.csv", index=False)
+    np.savez_compressed(f"resultados/t4_probs{sufijo}.npz", **{k: np.array(v) for k, v in probs.items()})
     return semillas, mejor_modelo, mejor_semilla, t_total
-
 
 def importancia_permutacion(modelo, X, y):
     """Caída del AUC al barajar cada columna de X. Una caída <= 0 sugiere una variable sin aporte."""
@@ -245,6 +245,10 @@ def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     os.makedirs("modelos", exist_ok=True)
     os.makedirs("resultados", exist_ok=True)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--demo", action="store_true", help="versión rápida (< 30 s) con 3 semillas para demostración")
+    a = p.parse_args()
+    sufijo = "_demo" if a.demo else ""
     t0 = time.perf_counter()
 
     # 1. Datos: los mismos de la regresión logística
@@ -255,20 +259,41 @@ def main():
           f"{X['entrenamiento'].shape[1]} variables de entrada")
 
     # 2. Búsqueda y entrenamiento final
-    config, t_busqueda, tabla = buscar(datos)
-    tabla.to_csv("resultados/t4_busqueda.csv", index=False)
-    print(f"\nCONFIGURACIÓN FINAL: {config}")
-    semillas, mejor_modelo, mejor_semilla, t_semillas = entrenar_semillas(config, datos, X, y)
+    if a.demo:
+        config = BASE
+        print(f"\nMODO DEMO: evaluando configuración base {config}")
+        _, perdida_val, ep_val, t_busqueda, _ = entrenar(config, datos, semilla=0, max_epocas=10)
+        tabla = pd.DataFrame([{
+            "etapa": "base_demo",
+            **config,
+            "perdida_val": round(perdida_val, 4),
+            "epocas": ep_val,
+            "segundos": round(t_busqueda, 2),
+            "parametros": contar_parametros(RedNeuronal(X["entrenamiento"].shape[1], config["capas"], config["dropout"], config["activacion"])),
+        }])
+        tabla.to_csv("resultados/t4_busqueda_demo.csv", index=False)
+        print(f"  Pérdida validación base: {perdida_val:.4f} ({t_busqueda:.1f} s)")
+        semillas, mejor_modelo, mejor_semilla, t_semillas = entrenar_semillas(
+            config, datos, X, y, n_semillas=3, max_epocas=10, sufijo="_demo"
+        )
+    else:
+        config, t_busqueda, tabla = buscar(datos)
+        tabla.to_csv("resultados/t4_busqueda.csv", index=False)
+        print(f"\nCONFIGURACIÓN FINAL: {config}")
+        semillas, mejor_modelo, mejor_semilla, t_semillas = entrenar_semillas(
+            config, datos, X, y, n_semillas=N_SEMILLAS, max_epocas=EPOCAS, sufijo=""
+        )
+
     torch.save({"config": config, "n_entrada": X["entrenamiento"].shape[1], "pesos": mejor_modelo.state_dict(),
-                "columnas": list(prep.columnas_), "semilla": mejor_semilla}, "modelos/red_neuronal.pt")
+                "columnas": list(prep.columnas_), "semilla": mejor_semilla}, f"modelos/red_neuronal{sufijo}.pt")
 
     # 3. Importancia por permutación y resumen
     imp = importancia_permutacion(mejor_modelo, X["validacion"], y["validacion"])
-    imp.to_csv("resultados/t4_importancia.csv", index=False)
+    imp.to_csv(f"resultados/t4_importancia{sufijo}.csv", index=False)
     print("\nIMPORTANCIA POR PERMUTACIÓN (caída de AUC en validación)\n" + imp.round(4).to_string())
     print(f"Variables sin aporte (caída <= 0): {imp.loc[imp['caida_auc'] <= 0, 'variable'].tolist() or 'ninguna'}")
     resumir(config, semillas, mejor_modelo, mejor_semilla, len(tabla), t_busqueda, t_semillas, time.perf_counter() - t0)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
