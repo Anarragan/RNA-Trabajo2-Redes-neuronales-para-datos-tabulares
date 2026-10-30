@@ -18,6 +18,26 @@ from metricas import curva_calibracion, tabla_metricas
 from preprocesamiento import preparar
 from red_neuronal import cargar_red, contar_parametros, predecir
 
+import numpy as np
+
+def matriz_confusion(y, p, t):
+    pred = (p >= t).astype(int)          # función indicadora: 1[p >= t]
+    tp = int(((y == 1) & (pred == 1)).sum()); fn = int(((y == 1) & (pred == 0)).sum())
+    fp = int(((y == 0) & (pred == 1)).sum()); tn = int(((y == 0) & (pred == 0)).sum())
+    n = len(y)
+    return {"umbral": t, "TP": tp, "FN": fn, "FP": fp, "TN": tn,
+            "exactitud": (tp + tn) / n,
+            "sensibilidad": tp / (tp + fn) if tp + fn else np.nan,
+            "especificidad": tn / (tn + fp) if tn + fp else np.nan,
+            "pct_rechazo": (tp + fp) / n,
+            "mora_en_aprobados": fn / (fn + tn) if fn + tn else np.nan}
+
+def umbral_por_costos(y_val, p_val, razon):
+    """Minimiza FN*razon + FP en validación. Grilla por cuantiles: sirve aunque las p sean pequeñas."""
+    grilla = np.unique(np.quantile(p_val, np.linspace(0.01, 0.99, 197)))
+    costos = [(lambda m: razon * m["FN"] + m["FP"])(matriz_confusion(y_val, p_val, t)) for t in grilla]
+    return grilla[int(np.argmin(costos))]
+
 
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))  # las rutas son relativas a Parte_1
@@ -57,6 +77,18 @@ def main():
     print("\nMÉTRICAS\n" + metricas.round(4).to_string(index=False))
     print(f"\nParámetros entrenables: regresión logística {len(reg_log.coef_[0]) + 1} | "
           f"red neuronal {contar_parametros(red)} ({config['capas']})")
+    
+    # --- dentro de main(), después de las métricas ---
+    filas = []
+    for modelo, p_modelo in probs.items():
+        for razon in [2, 3, 5, 10]:
+            t = umbral_por_costos(y["validacion"], p_modelo["validacion"], razon)
+            for nombre in ["validacion", "prueba"]:
+                filas.append({"modelo": modelo, "razon_costos": razon, "particion": nombre,
+                            **matriz_confusion(y[nombre], p_modelo[nombre], t)})
+    conf = pd.DataFrame(filas)
+    conf.to_csv(f"resultados/t5_confusion{sufijo}.csv", index=False)
+    print("\nMATRIZ DE CONFUSIÓN (umbral elegido en validación)\n" + conf.round(3).to_string(index=False))
 
     # 4. Curva de calibración: probabilidad predicha vs. tasa observada, por deciles ------------------
     fig, ejes = plt.subplots(1, 3, figsize=(13, 4), sharex=True, sharey=True)

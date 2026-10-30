@@ -61,6 +61,12 @@ class PreparadorDatos:
         # Se convierte a fecha ANTES de sacar mínimo y máximo. 
         df["issue_d"] = pd.to_datetime(df["issue_d"], format="%b-%Y")
         print(f"Periodo (issue_d): {df['issue_d'].min():%Y-%m} a {df['issue_d'].max():%Y-%m}")
+
+        df_crudo = df.copy()  # para depuración, no se usa en el resto del código
+        df_crudo["anio"] = pd.to_datetime(df_crudo["issue_d"]).dt.year
+        df_crudo["tiene_resultado"] = df_crudo["loan_status"].isin(MAPA_OBJETIVO)
+        print(df_crudo.groupby("anio")["tiene_resultado"].mean().round(2))      # % que se quedó, por año
+        print(df_crudo.groupby(["anio", "term"])["tiene_resultado"].mean().round(2).unstack())
         return df
 
     def construir_objetivo(self, df):
@@ -80,6 +86,7 @@ class PreparadorDatos:
 
     def construir_dataset(self, df):
         """Deja solo las predictoras (ya transformadas), la fecha y 'malo'. Devuelve el DataFrame del modelo."""
+        
         d = df[["issue_d", "malo"] + PREDICTORAS].copy()
 
         # plazo: 0 = 36 meses, 1 = 60 meses
@@ -100,6 +107,15 @@ class PreparadorDatos:
         # indicadores: 1 si la persona tuvo el evento, 0 si el dato está vacío (nunca tienen nulos)
         d["ind_mora_previa"] = df["mths_since_last_delinq"].notna().astype(int)
         d["ind_registro_publico"] = df["mths_since_last_record"].notna().astype(int)
+        d["ratio_prestamo_ingreso"] = d["loan_amnt"] / (d["annual_inc"] + 1)
+        # 2. Ingreso libre estimado post-deudas
+        d["ingreso_libre"] = d["annual_inc"] * (1 - (d["dti"] / 100))
+
+        # 3. Saldo revolvente promedio por cuenta abierta
+        d["saldo_promedio_cuenta"] = d["revol_bal"] / (d["open_acc"] + 1)
+
+        # 4. Proporción de cuentas abiertas sobre el total
+        d["ratio_cuentas_activas"] = d["open_acc"] / (d["total_acc"] + 1)
 
         print("\n3. DATASET DE MODELAMIENTO")
         print(f"Filas x columnas: {d.shape[0]:,} x {d.shape[1]}")
@@ -123,12 +139,15 @@ class PreparadorDatos:
 
     def ejecutar(self):
         """Corre todo el paso: cargar -> objetivo -> dataset -> guardar los dos archivos."""
+        
         df = self.cargar()
+        
         df = self.construir_objetivo(df)
         d = self.construir_dataset(df)
         print()
         self.guardar(d, self.salida)
         self.guardar(self.construir_base_lgd(df, d), self.salida_lgd)
+       
         return d
 
 

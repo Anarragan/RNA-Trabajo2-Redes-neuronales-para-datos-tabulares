@@ -1,85 +1,79 @@
-# Importamos argparse para la gestion de argumentos desde la linea de comandos
+"""
+Punto de entrada de la Parte 2: python main.py <comando> [opciones]
+
+Comandos (cada uno corre su script y le pasa el resto de las opciones):
+  datos      construccion_lgd.py         data/base_lgd.csv -> resultados/lgd_procesado.csv
+  rl         regresion_lineal.py         modelos/regresion_lineal.joblib, preprocesador_lgd.joblib
+  rna        red_neuronal_lgd.py         modelos/red_neuronal_lgd.pt, resultados/t4_*
+  evaluar    evaluacion.py               figuras/t4_distribucion_lgd.png, resultados/t5_perdida_esperada.csv
+  comparar   comparar.py                 resultados/comparacion_lgd.csv
+  todo       datos, rl, rna, evaluar y comparar, en ese orden
+
+Ejemplos:
+  python main.py todo                          flujo completo con búsqueda e hiperparámetros
+  python main.py todo --demo                   versión rápida (< 30 s) para sustentación en vivo
+  python main.py rna --demo                    solo la red neuronal de LGD en versión rápida
+  python main.py rna --semillas 30 --epocas 40
+  python main.py evaluar --demo
+  python main.py rl --alpha 1.0
+Opciones de un comando:  python main.py <comando> --help
+"""
 import argparse
-
-# Importamos os para verificaciones de archivos y carpetas
 import os
-
-# Importamos sys para manejar las rutas y salidas del sistema
+import subprocess
 import sys
-
-# Importamos time para medir el tiempo total de ejecucion del pipeline
 import time
 
-# Importamos la funcion de construccion de la target LGD del archivo 1
-from construccion_lgd import construir_base_lgd
+CARPETA = os.path.dirname(os.path.abspath(__file__))
+SCRIPTS = {
+    "datos": "construccion_lgd.py",
+    "rl": "regresion_lineal.py",
+    "rna": "red_neuronal_lgd.py",
+    "evaluar": "evaluacion.py",
+    "comparar": "comparar.py",
+}
+TODO = ["datos", "rl", "rna", "evaluar", "comparar"]
+SOLO_DEMO = ["datos", "rl", "rna", "evaluar"]
 
-# Importamos la funcion de evaluacion final y calculo de E[L] del archivo 4
-from evaluacion_lgd import evaluar_modelos_y_calcular_el
 
-# Importamos la funcion de entrenamiento sobre N semillas del archivo 3
-from red_neuronal_lgd import entrenar_30_semillas
+def correr(comando, extra):
+    """
+    Ejecuta scripts individualmente de la Parte 2.
 
-# Importamos la funcion de entrenamiento del modelo de referencia del archivo 2
-from regresion_lineal import entrenar_modelo_referencia
+    Args:
+        comando (str): Clave del comando registrado en SCRIPTS.
+        extra (list): Argumentos adicionales para pasarle al script.
+    """
+    print(f"\n=== {comando}: {SCRIPTS[comando]} {' '.join(extra)} ===", flush=True)
+    t0 = time.perf_counter()
+    if subprocess.run([sys.executable, os.path.join(CARPETA, SCRIPTS[comando]), *extra], cwd=CARPETA).returncode != 0:
+        sys.exit(f"El comando '{comando}' falló.")
+    print(f"[{comando}: {time.perf_counter() - t0:.1f} s]")
 
 
 def main():
-    # Creamos el parser de argumentos de linea de comandos
-    parser = argparse.ArgumentParser(
-        description="Flujo principal de la Parte 2: LGD y Perdida Esperada E[L]"
+    """Punto de entrada principal para despachar comandos en la Parte 2."""
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        usage="python main.py <comando> [opciones]",
     )
-
-    # Añadimos la bandera --demo para ejecuciones de prueba rapida (< 2 minutos)
-    parser.add_argument(
-        "--demo",
-        action="store_true",
-        help="Ejecuta una version rapida con 3 semillas para demostracion en vivo",
+    p.add_argument(
+        "comando",
+        choices=[*SCRIPTS, "todo"],
+        metavar="comando",
+        help="datos | rl | rna | evaluar | comparar | todo",
     )
-
-    # Procesamos los argumentos ingresados por el usuario
-    args = parser.parse_args()
-
-    # Registramos el tiempo inicial de ejecucion
-    tiempo_inicio = time.time()
-
-    # Imprimimos encabezado del pipeline
-    print("=" * 70)
-    print("  EJECUCIÓN PARTE 2: PÉRDIDA DADO EL INCUMPLIMIENTO (LGD) Y E[L]")
-    print("=" * 70)
-
-    # Paso 1: Construccion de la base y calculo de target_lgd
-    print("\n[Paso 1/4] Construyendo variable objetivo LGD y filtrando datos...")
-    construir_base_lgd()
-
-    # Paso 2: Entrenamiento del modelo de referencia
-    print("\n[Paso 2/4] Entrenando modelo de referencia (Regresion Lineal/Ridge)...")
-    entrenar_modelo_referencia()
-
-    # Determinamos la cantidad de semillas segun la presencia de la bandera --demo
-    num_semillas = 3 if args.demo else 30
-
-    # Paso 3: Entrenamiento de la Red Neuronal sobre N semillas
-    print(
-        f"\n[Paso 3/4] Entrenando Red Neuronal MLP sobre {num_semillas} semillas..."
-    )
-    entrenar_30_semillas(num_semillas=num_semillas)
-
-    # Paso 4: Evaluacion final, graficos de densidad y Perdida Esperada
-    print("\n[Paso 4/4] Generando evaluacion final, gráficos y Pérdida Esperada...")
-    evaluar_modelos_y_calcular_el()
-
-    # Calculamos la duracion total del proceso en segundos
-    duracion_total = time.time() - tiempo_inicio
-
-    # Imprimimos mensaje final de exito con el tiempo total transcurrido
-    print("\n" + "=" * 70)
-    print(
-        f"  [ÉXITO] PARTE 2 COMPLETADA SATISFACTORIAMENTE EN {duracion_total:.2f} SEGUNDOS"
-    )
-    print("=" * 70)
+    p.add_argument("opciones", nargs=argparse.REMAINDER, help="se pasan tal cual al script del comando")
+    a = p.parse_args()
+    if a.comando != "todo":
+        return correr(a.comando, a.opciones)
+    if set(a.opciones) - {"--demo"}:
+        sys.exit("'todo' solo acepta --demo. Para otras opciones corre cada comando por separado.")
+    demo = "--demo" in a.opciones
+    for c in (SOLO_DEMO if demo else TODO):
+        correr(c, ["--demo"] if demo and c in ("rna", "evaluar") else [])
 
 
-# Punto de entrada principal del script orquestador
 if __name__ == "__main__":
-    # Ejecutamos la funcion main
     main()

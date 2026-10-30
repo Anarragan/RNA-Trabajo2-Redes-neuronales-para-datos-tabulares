@@ -10,17 +10,19 @@ Uso típico:
 """
 import numpy as np
 import pandas as pd
+from sklearn.preprocessing import QuantileTransformer
 
 RUTA_DATOS = "data/datos_modelo.csv"
 
 # Cortes de la partición temporal (por fecha de originación). Cambiarlos aquí los cambia en todos los modelos.
-CORTE_VAL = "2013-01-01"    # validación: desde esta fecha
-CORTE_TEST = "2014-01-01"   # prueba: desde esta fecha
+CORTE_VAL = "2012-01-01"    # validación: desde esta fecha
+CORTE_TEST = "2012-07-01"   # prueba: desde esta fecha
+FIN_DATOS = "2013-01-01"     # fin de los datos
 NOMBRES = ("entrenamiento", "validacion", "prueba")
 
 # Continuas y conteos: se imputan con la mediana, se recortan por percentiles y se estandarizan
 CONTINUAS = ["loan_amnt", "annual_inc", "dti", "revol_bal", "revol_util",
-             "antiguedad_hist_anios", "emp_length_anios"]
+             "antiguedad_hist_anios", "emp_length_anios", "ratio_prestamo_ingreso", "ingreso_libre", "saldo_promedio_cuenta", "ratio_cuentas_activas"]
 CONTEOS = ["delinq_2yrs", "inq_last_6mths", "open_acc", "pub_rec", "total_acc"]
 
 # Ya son 0/1: se dejan como están
@@ -41,6 +43,7 @@ def partir(df, corte_val=CORTE_VAL, corte_test=CORTE_TEST):
     corte_val, corte_test = pd.Timestamp(corte_val), pd.Timestamp(corte_test)
     if not corte_val < corte_test:
         raise ValueError("El corte de validación debe ser anterior al corte de prueba.")
+    df = df[df["issue_d"] < pd.Timestamp(FIN_DATOS)]  
     partes = {
         "entrenamiento": df[df["issue_d"] < corte_val],
         "validacion": df[(df["issue_d"] >= corte_val) & (df["issue_d"] < corte_test)],
@@ -55,9 +58,10 @@ def partir(df, corte_val=CORTE_VAL, corte_test=CORTE_TEST):
 class Preprocesador:
     """Imputa con la mediana, recorta extremos, estandariza y codifica categorías."""
 
-    def __init__(self, p_inf=1, p_sup=99):
+    def __init__(self, p_inf=1, p_sup=99, gaussiano=False):
         self.p_inf = p_inf
         self.p_sup = p_sup
+        self.gaussiano = gaussiano   # True: transformación cuantílica a normal (para la red neuronal)
 
     def _numericas(self, df):
         X = df[CONTINUAS + CONTEOS].astype(float).copy()
@@ -72,6 +76,10 @@ class Preprocesador:
         self.lim_inf_ = X.quantile(self.p_inf / 100)
         self.lim_sup_ = X.quantile(self.p_sup / 100)
         X = X.clip(self.lim_inf_, self.lim_sup_, axis=1)
+        if self.gaussiano:
+            self.cuantil_ = QuantileTransformer(output_distribution="normal", n_quantiles=1000,
+                                                subsample=len(X), random_state=0).fit(X)
+            X = pd.DataFrame(self.cuantil_.transform(X), index=X.index, columns=X.columns)
         self.medias_ = X.mean()
         self.desv_ = X.std(ddof=0).replace(0, 1.0)  # evita dividir por cero
         self.categorias_ = {}
@@ -88,7 +96,9 @@ class Preprocesador:
         emp_nulo = X["emp_length_anios"].isna().astype(int)  # se marca ANTES de imputar
         X = X.fillna(self.medianas_)
         X = X.clip(self.lim_inf_, self.lim_sup_, axis=1)
-        X = (X - self.medias_) / self.desv_
+        if self.gaussiano:
+            X = pd.DataFrame(self.cuantil_.transform(X), index=X.index, columns=X.columns)
+        X = (X - self.medias_) / self.desv_   # media 0 y varianza 1 (con gaussiano, sobre la variable ya normalizada)
         X["emp_length_nulo"] = emp_nulo
         for c in BINARIAS:
             X[c] = df[c].astype(int)
@@ -101,14 +111,14 @@ class Preprocesador:
         return X
 
 
-def preparar(corte_val=CORTE_VAL, corte_test=CORTE_TEST, ruta=RUTA_DATOS):
+def preparar(corte_val=CORTE_VAL, corte_test=CORTE_TEST, ruta=RUTA_DATOS, gaussiano=False):
     """Todo el flujo de datos en una llamada.
 
     Devuelve (preprocesador, X, y, partes); X, y y partes son diccionarios con las claves
     "entrenamiento", "validacion" y "prueba".
     """
     partes = partir(pd.read_csv(ruta, parse_dates=["issue_d"]), corte_val, corte_test)
-    prep = Preprocesador().fit(partes["entrenamiento"])
+    prep = Preprocesador(gaussiano=gaussiano).fit(partes["entrenamiento"])
     X = {k: prep.transform(v) for k, v in partes.items()}
     y = {k: v["malo"].to_numpy() for k, v in partes.items()}
     return prep, X, y, partes

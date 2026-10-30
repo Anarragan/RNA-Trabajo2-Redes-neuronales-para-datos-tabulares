@@ -1,4 +1,9 @@
-MAE Promedio: 0.1657 +/- 0.0101
-MAE Mejor: 0.1560 | Peor: 0.1796
-RMSE Promedio: 0.1990 +/- 0.0106
-Parametros Entrenables: 4545
+--- RESUMEN MODELO LGD (MLP) ---
+Configuracion: {'capas': [32, 16], 'activacion': 'relu', 'dropout': 0.2, 'l2': 0.0001, 'optimizador': 'adam', 'lr': 0.001}
+Parametros Entrenables: 1793
+Semillas evaluadas: 3 (Mejor semilla: 0)
+Tiempo busqueda: 0.0 s | Tiempo semillas: 2.1 s | Total: 5.1 s
+
+[Prueba - 30 semillas]
+MAE:  0.1840 +/- 0.0005 (Mejor: 0.1836 | Peor: 0.1846)
+RMSE: 0.2255 +/- 0.0007 (Mejor: 0.2250 | Peor: 0.2263)

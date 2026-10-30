@@ -1,213 +1,346 @@
-# Importamos os para verificacion y creacion de carpetas
+import argparse
 import os
-
-# Importamos sys para manejar las rutas de importacion
 import sys
+import time
+from pathlib import Path
 
-# Importamos joblib para cargar el preprocesador oficial
 import joblib
-
-# Importamos numpy para el calculo de metricas agregadas (media, desv std)
 import numpy as np
-
-# Importamos pandas para la manipulacion de las particiones de datos
 import pandas as pd
-
-# Importamos las metricas MAE y RMSE de scikit-learn para regresion
 from sklearn.metrics import mean_absolute_error, root_mean_squared_error
-
-# Importamos PyTorch para la construccion y entrenamiento de la red neuronal
 import torch
-
-# Importamos el modulo de capas y funciones de perdida de PyTorch
 import torch.nn as nn
-
-# Importamos los optimizadores de PyTorch
 import torch.optim as optim
 
-# Añadimos la carpeta Parte_1 a la ruta de modulos
-sys.path.append("../Parte_1")
+CARPETA = Path(__file__).resolve().parent
+if str(CARPETA.parent / "Parte_1") not in sys.path:
+    sys.path.append(str(CARPETA.parent / "Parte_1"))
 
-# Importamos la funcion de particion temporal unificada
+# Importamos la particion temporal unificada
 from preprocesamiento import partir
 
+# Hiperparámetros generales
+N_SEMILLAS = 30
+EPOCAS = 50
+PACIENCIA = 10
+LOTE = 128
+SEMILLAS_BUSQUEDA = 1
 
-# Definicion de la arquitectura MLP para la LGD
+# Configuración base de partida
+BASE = {
+    "capas": [32, 16],
+    "activacion": "relu",
+    "dropout": 0.2,
+    "l2": 1e-4,
+    "optimizador": "adam",
+    "lr": 1e-3,
+}
+
+# Etapas de búsqueda de hiperparámetros adaptadas a regresión LGD
+ETAPAS = [
+    (("capas",), [[32], [64, 32], [64, 32, 16]]),
+    (("activacion",), ["tanh", "leaky_relu"]),
+    (("dropout",), [0.1, 0.3, 0.4]),
+    (("l2",), [1e-5, 1e-3]),
+    (("optimizador", "lr"), [("adam", 5e-4), ("adam", 3e-3), ("sgd", 1e-2)]),
+]
+
+ACTIVACIONES = {
+    "relu": nn.ReLU,
+    "tanh": nn.Tanh,
+    "leaky_relu": nn.LeakyReLU,
+}
+DISPOSITIVO = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# ----------------------------- MODELO -----------------------------
 class RedNeuronalLGD(nn.Module):
+    """
+    MLP para estimar la LGD:
+    Capas ocultas con activación y Dropout.
+    Capa de salida con activación Sigmoide para acotar la LGD estrictamente en [0, 1].
+    """
 
-    # Constructor que recibe dimension de entrada, capas ocultas y dropout
-    def __init__(self, input_dim, capas=[64, 32], dropout=0.2):
-        # Inicializamos la clase base nn.Module
-        super(RedNeuronalLGD, self).__init__()
+    def __init__(self, n_entrada, capas=[32, 16], dropout=0.2, activacion="relu"):
+        super().__init__()
+        bloques, anterior = [], n_entrada
+        act_class = ACTIVACIONES.get(activacion, nn.ReLU)
+        for neuronas in capas:
+            bloques.append(nn.Linear(anterior, neuronas))
+            bloques.append(act_class())
+            bloques.append(nn.Dropout(dropout))
+            anterior = neuronas
+        bloques.append(nn.Linear(anterior, 1))
+        bloques.append(nn.Sigmoid())  # Acota LGD en [0, 1]
+        self.red = nn.Sequential(*bloques)
 
-        # Lista vacia para almacenar la secuencia de capas
-        layers = []
-
-        # Entrada inicial a la primera capa
-        in_features = input_dim
-
-        # Construimos iterativamente las capas ocultas
-        for units in capas:
-            # Capa lineal conectada
-            layers.append(nn.Linear(in_features, units))
-            # Normalizacion por lote para estabilizar gradientes
-            layers.append(nn.BatchNorm1d(units))
-            # Activacion ReLU
-            layers.append(nn.ReLU())
-            # Capa de dropout para prevenir sobreajuste
-            layers.append(nn.Dropout(dropout))
-            # Actualizamos la dimension de entrada para la siguiente capa
-            in_features = units
-
-        # Capa de salida lineal de 1 sola neurona (regresion)
-        layers.append(nn.Linear(in_features, 1))
-
-        # Activacion de salida Sigmoide para acotar la LGD estrictamente en [0, 1]
-        layers.append(nn.Sigmoid())
-
-        # Ensamblamos la secuencia completa en un modulo Sequential
-        self.net = nn.Sequential(*layers)
-
-    # Metodo de pase hacia adelante (forward pass)
     def forward(self, x):
-        # Evaluamos la entrada x a traves de la red secuencial
-        return self.net(x)
+        return self.red(x)
 
 
-def entrenar_30_semillas(num_semillas=30):
-    # Cargar la base procesada de LGD
-    df = pd.read_csv("resultados/lgd_procesado.csv", parse_dates=["issue_d"])
-
-    # Aplicamos la misma particion temporal (retorna diccionario)
-    partes = partir(df)
-    train = partes["entrenamiento"]
-    val = partes["validacion"]
-
-    # Cargar el preprocesador entrenado en la regresion lineal
-    prep = joblib.load("modelos/preprocesador_lgd.joblib")
-
-    # Separar variables predictoras (X) y objetivo (y)
-    X_train_raw = train.drop(columns=["target_lgd", "issue_d"])
-    y_train = train["target_lgd"].values
-
-    X_val_raw = val.drop(columns=["target_lgd", "issue_d"])
-    y_val = val["target_lgd"].values
-
-    # Transformar las particiones con el preprocesador oficial
-    X_train = prep.transform(X_train_raw)
-    X_val = prep.transform(X_val_raw)
-
-    # Aseguramos conversión explicita a NumPy ndarray por si transform devuelve un DataFrame
-    if isinstance(X_train, pd.DataFrame):
-        X_train = X_train.values
-    if isinstance(X_val, pd.DataFrame):
-        X_val = X_val.values
+def contar_parametros(modelo):
+    """Retorna el número de parámetros entrenables del modelo."""
+    return sum(p.numel() for p in modelo.parameters() if p.requires_grad)
 
 
-    # Convertir las matrices de NumPy a tensores de PyTorch
-    X_train_t = torch.tensor(X_train, dtype=torch.float32)
-    y_train_t = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
-    X_val_t = torch.tensor(X_val, dtype=torch.float32)
+def a_tensor(X, y=None):
+    """Convierte arreglos o DataFrames a tensores en el dispositivo configurado."""
+    X_t = torch.as_tensor(np.asarray(X, dtype=np.float32), device=DISPOSITIVO)
+    if y is None:
+        return X_t
+    y_t = torch.as_tensor(np.asarray(y, dtype=np.float32), device=DISPOSITIVO).view(-1, 1)
+    return X_t, y_t
 
-    # Obtener el numero de variables de entrada
-    input_dim = X_train.shape[1]
 
-    # Listas para almacenar las metricas de cada semilla
-    maes, rmses = [], []
+def predecir_lgd(modelo, X):
+    """Genera predicciones continuas de LGD acotadas en [0, 1]."""
+    modelo.eval()
+    with torch.no_grad():
+        X_t = a_tensor(X)
+        preds = modelo(X_t).cpu().numpy().ravel()
+        return np.clip(preds, 0.0, 1.0)
 
-    # Variables para rastrear el mejor modelo segun MAE
-    best_mae = float("inf")
-    best_model = None
 
-    # Mensaje inicial del benchmark
-    print(f"Ejecutando evaluacion sobre {num_semillas} semillas...")
+def cargar_red_lgd(ruta=None):
+    """Carga el modelo guardado reconstruyendo dinámicamente su arquitectura."""
+    if ruta is None:
+        ruta = str(CARPETA / "modelos" / "red_neuronal_lgd.pt")
+    guardado = torch.load(str(ruta), map_location=DISPOSITIVO, weights_only=False)
+    c = guardado["config"]
+    modelo = RedNeuronalLGD(
+        guardado["n_entrada"],
+        capas=c["capas"],
+        dropout=c["dropout"],
+        activacion=c.get("activacion", "relu"),
+    )
+    modelo.to(DISPOSITIVO).load_state_dict(guardado["pesos"])
+    return modelo.eval(), c
 
-    # Bucle de entrenamiento sobre N semillas independientes
-    for seed in range(num_semillas):
-        # Fijar la semilla de PyTorch
-        torch.manual_seed(seed)
-        # Fijar la semilla de NumPy
-        np.random.seed(seed)
 
-        # Instanciar la red neuronal LGD
-        model = RedNeuronalLGD(input_dim=input_dim, capas=[64, 32], dropout=0.2)
+# ----------------------------- ENTRENAMIENTO -----------------------------
+def entrenar_una_corrida(config, datos, semilla, epocas=EPOCAS, paciencia=PACIENCIA):
+    """
+    Entrena el modelo con mini-lotes y parada temprana sobre la pérdida MSE de validación.
+    """
+    X_ent, y_ent, X_val, y_val = datos
+    torch.manual_seed(semilla)
+    np.random.seed(semilla)
 
-        # Configurar optimizador AdamW
-        optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    modelo = RedNeuronalLGD(
+        X_ent.shape[1],
+        capas=config["capas"],
+        dropout=config["dropout"],
+        activacion=config.get("activacion", "relu"),
+    ).to(DISPOSITIVO)
 
-        # Configurar funcion de perdida Error Cuadratico Medio (MSE)
-        criterion = nn.MSELoss()
+    if config.get("optimizador") == "sgd":
+        optimizador = optim.SGD(modelo.parameters(), lr=config["lr"], momentum=0.9, weight_decay=config["l2"])
+    else:
+        optimizador = optim.Adam(modelo.parameters(), lr=config["lr"], weight_decay=config["l2"])
 
-        # Colocar la red en modo de entrenamiento
-        model.train()
+    criterio = nn.MSELoss()
 
-        # Bucle de entrenamiento por 30 epocas
-        for epoch in range(30):
-            # Limpiar gradientes del paso anterior
-            optimizer.zero_grad()
-            # Pase hacia adelante
-            out = model(X_train_t)
-            # Calculo de la perdida
-            loss = criterion(out, y_train_t)
-            # Retropropagacion de gradientes
+    t0 = time.perf_counter()
+    mejor_val, sin_mejora, mejores_pesos = float("inf"), 0, None
+
+    for epoca in range(1, epocas + 1):
+        modelo.train()
+        orden = torch.randperm(len(X_ent), device=DISPOSITIVO)
+        for i in range(0, len(orden), LOTE):
+            filas = orden[i:i + LOTE]
+            if len(filas) < 2:
+                continue
+            optimizador.zero_grad()
+            out = modelo(X_ent[filas])
+            loss = criterio(out, y_ent[filas])
             loss.backward()
-            # Actualizacion de pesos
-            optimizer.step()
+            optimizador.step()
 
-        # Colocar la red en modo de evaluacion
-        model.eval()
-
-        # Desactivar calculo de gradientes para inferencia
+        modelo.eval()
         with torch.no_grad():
-            # Predecir sobre el conjunto de validacion
-            preds = model(X_val_t).cpu().numpy().flatten()
+            val_loss = criterio(modelo(X_val), y_val).item()
 
-        # Calcular MAE y RMSE de esta semilla
-        mae = mean_absolute_error(y_val, preds)
-        rmse = root_mean_squared_error(y_val, preds)
+        if not np.isfinite(val_loss):
+            break
 
-        # Guardar metricas en las listas
-        maes.append(mae)
-        rmses.append(rmse)
+        if val_loss < mejor_val:
+            mejor_val = val_loss
+            sin_mejora = 0
+            mejores_pesos = {k: v.detach().clone() for k, v in modelo.state_dict().items()}
+        else:
+            sin_mejora += 1
+            if sin_mejora >= paciencia:
+                break
 
-        # Si encontramos una semilla con mejor MAE, guardamos la red
-        if mae < best_mae:
-            best_mae = mae
-            best_model = model
+    if mejores_pesos is not None:
+        modelo.load_state_dict(mejores_pesos)
 
-    # Crear carpeta modelos si no existe
+    return modelo, mejor_val, epoca, time.perf_counter() - t0
+
+
+def probar_configuracion(config, datos, filas, epocas=EPOCAS):
+    """Evalúa una configuración candidata en búsqueda."""
+    resultados = [entrenar_una_corrida(config, datos, 100 + s, epocas=epocas) for s in range(SEMILLAS_BUSQUEDA)]
+    fila = {
+        **config,
+        "loss_mse_val": float(np.mean([x[1] for x in resultados])),
+        "desv_val": float(np.std([x[1] for x in resultados])),
+        "epocas": float(np.mean([x[2] for x in resultados])),
+        "segundos": float(sum(x[3] for x in resultados)),
+        "parametros": contar_parametros(resultados[-1][0]),
+    }
+    print(
+        f"  {len(filas) + 1:>2} | MSE val: {fila['loss_mse_val']:.5f} | "
+        f"{fila['epocas']:2.0f} épocas | {fila['segundos']:4.1f} s | {config}"
+    )
+    filas.append(fila)
+    return fila
+
+
+def buscar_hiperparametros(datos, epocas=EPOCAS):
+    """Búsqueda por etapas de la mejor arquitectura e hiperparámetros para LGD."""
+    filas = []
+    n_configs = 1 + sum(len(op) for _, op in ETAPAS)
+    print(f"\nBÚSQUEDA POR ETAPAS LGD ({n_configs} configuraciones, criterio: MSE de validación)")
+    mejor = BASE
+    mejor_mse = probar_configuracion(mejor, datos, filas, epocas=epocas)["loss_mse_val"]
+
+    for claves, opciones in ETAPAS:
+        for opcion in opciones:
+            valores = opcion if len(claves) > 1 else (opcion,)
+            candidata = {**mejor, **dict(zip(claves, valores))}
+            mse = probar_configuracion(candidata, datos, filas, epocas=epocas)["loss_mse_val"]
+            if mse < mejor_mse:
+                mejor, mejor_mse = candidata, mse
+
+    tabla = pd.DataFrame(filas)
+    return mejor, float(tabla["segundos"].sum()), tabla
+
+
+def entrenar_semillas_finales(config, datos, X, y, n_semillas=N_SEMILLAS, epocas=EPOCAS):
+    """Entrena la configuración ganadora sobre N semillas y registra estabilidad."""
+    print(f"\nENTRENAMIENTO FINAL LGD ({n_semillas} semillas)")
+    registros = []
+    mejor_mae_val, mejor_modelo, mejor_semilla, t_total = float("inf"), None, None, 0.0
+
+    for semilla in range(n_semillas):
+        modelo, _, ep_usadas, seg = entrenar_una_corrida(config, datos, semilla, epocas=epocas)
+        t_total += seg
+
+        # Evaluamos métricas de regresión (MAE y RMSE) en validación y prueba
+        preds_val = predecir_lgd(modelo, X["validacion"])
+        preds_test = predecir_lgd(modelo, X["prueba"])
+
+        mae_val = mean_absolute_error(y["validacion"], preds_val)
+        rmse_val = root_mean_squared_error(y["validacion"], preds_val)
+        mae_test = mean_absolute_error(y["prueba"], preds_test)
+        rmse_test = root_mean_squared_error(y["prueba"], preds_test)
+
+        registros.append({
+            "semilla": semilla,
+            "MAE_val": mae_val,
+            "RMSE_val": rmse_val,
+            "MAE_test": mae_test,
+            "RMSE_test": rmse_test,
+            "epocas": ep_usadas,
+            "segundos": seg,
+        })
+
+        if mae_val < mejor_mae_val:
+            mejor_mae_val = mae_val
+            mejor_modelo = modelo
+            mejor_semilla = semilla
+
+        if n_semillas > 5 and semilla % 5 == 0 or n_semillas <= 5:
+            print(f"  semilla {semilla:>2} | MAE test {mae_test:.4f} | RMSE test {rmse_test:.4f} | {ep_usadas:>2} épocas | {seg:4.1f} s")
+
+    df_semillas = pd.DataFrame(registros)
+    return df_semillas, mejor_modelo, mejor_semilla, t_total
+
+
+def main():
+    os.chdir(CARPETA)
+    parser = argparse.ArgumentParser(description="Tarea 3 (Parte 2): Red Neuronal MLP para LGD")
+    parser.add_argument("--demo", action="store_true", help="versión rápida (< 30 s: configuración base y 3 semillas)")
+    parser.add_argument("--semillas", type=int, default=30, help="semillas para entrenar la red final (defecto: 30)")
+    parser.add_argument("--epocas", type=int, default=40, help="máximo de épocas por semilla (defecto: 40)")
+    parser.add_argument("--sin-busqueda", action="store_true", help="usar configuración base directamente sin búsqueda")
+    args = parser.parse_args()
+
+    t_inicio = time.perf_counter()
+    sufijo = "_demo" if args.demo else ""
+    n_semillas = 3 if args.demo else args.semillas
+    epocas = 10 if args.demo else args.epocas
+
+    # 1. Datos
+    df = pd.read_csv("resultados/lgd_procesado.csv", parse_dates=["issue_d"])
+    partes = partir(df)
+
+    prep = joblib.load("modelos/preprocesador_lgd.joblib")
+    X = {k: prep.transform(partes[k].drop(columns=["target_lgd", "issue_d", "funded_amnt"])) for k in partes}
+    y = {k: partes[k]["target_lgd"].values for k in partes}
+
+    datos_tensor = (
+        *a_tensor(X["entrenamiento"], y["entrenamiento"]),
+        *a_tensor(X["validacion"], y["validacion"]),
+    )
+
+    print(
+        f"Datos LGD | Entrenamiento: {len(y['entrenamiento']):,} | "
+        f"Validación: {len(y['validacion']):,} | Prueba: {len(y['prueba']):,} | "
+        f"Variables: {X['entrenamiento'].shape[1]}"
+    )
+
+    # 2. Búsqueda de hiperparámetros
+    os.makedirs("resultados", exist_ok=True)
     os.makedirs("modelos", exist_ok=True)
 
-    # Guardar el estado del mejor modelo entrenado
-    torch.save(best_model.state_dict(), "modelos/red_neuronal_lgd.pt")
+    if args.demo or args.sin_busqueda:
+        config = BASE
+        t_busqueda = 0.0
+        print(f"\n[Modo rápido] Usando configuración base directa: {config}")
+    else:
+        config, t_busqueda, tabla_busqueda = buscar_hiperparametros(datos_tensor, epocas=epocas)
+        tabla_busqueda.to_csv("resultados/t4_busqueda_lgd.csv", index=False)
+        print(f"\nMEJOR CONFIGURACIÓN LGD: {config} (Tiempo búsqueda: {t_busqueda:.1f} s)")
 
-    # Calcular cantidad de parametros entrenables
-    num_params = sum(
-        p.numel() for p in best_model.parameters() if p.requires_grad
+    # 3. Entrenamiento con semillas independientes
+    df_semillas, mejor_modelo, mejor_semilla, t_semillas = entrenar_semillas_finales(
+        config, datos_tensor, X, y, n_semillas=n_semillas, epocas=epocas
     )
+    df_semillas.to_csv(f"resultados/t4_semillas_lgd{sufijo}.csv", index=False)
 
-    # Formatear el texto de resumen de resultados
+    # 4. Guardar mejor modelo con metadatos completos para reconstrucción dinámica
+    ruta_modelo = f"modelos/red_neuronal_lgd{sufijo}.pt"
+    torch.save({
+        "config": config,
+        "n_entrada": X["entrenamiento"].shape[1],
+        "pesos": mejor_modelo.state_dict(),
+        "semilla": mejor_semilla,
+    }, ruta_modelo)
+
+    # 5. Resumen
+    num_params = contar_parametros(mejor_modelo)
+    t_total = time.perf_counter() - t_inicio
     resumen = (
-        f"MAE Promedio: {np.mean(maes):.4f} +/- {np.std(maes):.4f}\n"
-        f"MAE Mejor: {np.min(maes):.4f} | Peor: {np.max(maes):.4f}\n"
-        f"RMSE Promedio: {np.mean(rmses):.4f} +/- {np.std(rmses):.4f}\n"
+        f"--- RESUMEN MODELO LGD (MLP) ---\n"
+        f"Configuracion: {config}\n"
         f"Parametros Entrenables: {num_params}\n"
+        f"Semillas evaluadas: {n_semillas} (Mejor semilla: {mejor_semilla})\n"
+        f"Tiempo busqueda: {t_busqueda:.1f} s | Tiempo semillas: {t_semillas:.1f} s | Total: {t_total:.1f} s\n\n"
+        f"[Prueba - 30 semillas]\n"
+        f"MAE:  {df_semillas['MAE_test'].mean():.4f} +/- {df_semillas['MAE_test'].std():.4f} "
+        f"(Mejor: {df_semillas['MAE_test'].min():.4f} | Peor: {df_semillas['MAE_test'].max():.4f})\n"
+        f"RMSE: {df_semillas['RMSE_test'].mean():.4f} +/- {df_semillas['RMSE_test'].std():.4f} "
+        f"(Mejor: {df_semillas['RMSE_test'].min():.4f} | Peor: {df_semillas['RMSE_test'].max():.4f})\n"
     )
 
-    # Crear carpeta resultados si no existe
-    os.makedirs("resultados", exist_ok=True)
-
-    # Guardar el resumen explicativo en resultados/t4_resumen.txt
     with open("resultados/t4_resumen.txt", "w") as f:
         f.write(resumen)
 
-    # Mostrar confirmacion por consola
-    print(
-        f"[OK] Red Neuronal entrenada sobre {num_semillas} semillas. Resumen guardado en resultados/t4_resumen.txt"
-    )
+    print("\n" + resumen)
+    print(f"[OK] Modelo guardado en '{ruta_modelo}' y resumen en 'resultados/t4_resumen.txt'")
 
 
-# Punto de entrada de ejecucion independiente
 if __name__ == "__main__":
-    # Ejecutamos las 30 semillas
-    entrenar_30_semillas(num_semillas=30)
+    main()
