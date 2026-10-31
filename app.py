@@ -124,7 +124,6 @@ def percentil(puntaje, sc):
 # ----------------------------- CONFIGURACIÓN DE LA PÁGINA -----------------------------
 st.set_page_config(
     page_title="Evaluación de Riesgo de Crédito (PD, LGD, E[L])",
-    page_icon="💳",
     layout="wide",
 )
 
@@ -141,14 +140,14 @@ st.write(
 with st.sidebar:
     st.header("Documentación y Enlaces")
     if REPORTE_URL:
-        st.link_button("📖 Reporte Técnico (Blog)", REPORTE_URL)
+        st.link_button("Reporte Técnico (Blog)", REPORTE_URL)
     else:
-        st.caption("📖 Reporte técnico: pendiente de enlace")
+        st.caption("Reporte técnico: pendiente de enlace")
 
     if VIDEO_URL:
-        st.link_button("🎥 Video Promocional", VIDEO_URL)
+        st.link_button("Video Promocional", VIDEO_URL)
     else:
-        st.caption("🎥 Video promocional: pendiente de enlace")
+        st.caption("Video promocional: pendiente de enlace")
 
     st.divider()
     st.subheader("Modelos Desplegados")
