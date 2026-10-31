@@ -12,7 +12,7 @@ cd Parte_1
 python main.py todo        # flujo completo (~5 min): rl, rna, evaluar, scorecard, comparar
 python main.py todo --demo # versión rápida (< 2 min): rl, rna y evaluar
 python main.py --help      # lista de comandos con ejemplos
-python main.py rna --help  # opciones de un comando (capas, lr, dropout, etc.)
+python main.py rna --help  # opciones de la red de PD (capas, lr, dropout, etc.)
 cd ..
 
 # --- PARTE 2: Pérdida Dado el Incumplimiento (LGD) y Pérdida Esperada E[L] ---
@@ -24,20 +24,108 @@ python main.py rna --help  # opciones de la red de LGD (capas, lr, dropout, etc.
 cd ..
 ```
 
-## Aplicación web (scorecard)
+## Aplicación web (scorecard y LGD integrada)
 
 ```bash
 streamlit run app.py       # desde la raíz del repositorio; abre http://localhost:8501
 ```
 
-Carga `Parte_1/modelos/scorecard.joblib` y `red_neuronal.pt` (ya en el repositorio): no reentrena ni usa internet. 
-Entrega puntaje, PD, percentil frente a la población histórica y un simulador de cambios. 
+Carga `Parte_1/modelos/scorecard.joblib`, `red_neuronal.pt` y `Parte_2/modelos/red_neuronal_lgd.pt`: no reentrena ni usa internet. 
+Entrega puntaje, PD, LGD, Pérdida Esperada $\mathbb{E}[L]$, percentil frente a la población histórica y un simulador "What-If" de cambios. 
 Para cambiar la scorecard: `python main.py scorecard --base 600 --odds 5 --pdo 20` y reiniciar la app. 
 Los enlaces al reporte y al video se pegan en `REPORTE_URL` y `VIDEO_URL` al inicio de `app.py`.
 
 **Despliegue gratis (Streamlit Community Cloud):** subir el repositorio a GitHub, entrar a share.streamlit.io, 
 *Create app* → elegir repositorio y rama, *Main file path* = `app.py`, Python 3.12 en *Advanced settings* → Deploy. 
 Instala solo `requirements.txt` y no necesita los datos grandes (`data/`).
+
+## Modificación de parámetros sin editar código (Línea de comandos y Archivo de Configuración)
+
+De acuerdo con el requisito de sustentación en vivo (**Punto 3 de la guía**), todos los hiperparámetros pueden modificarse sin tocar el código fuente, ya sea mediante argumentos CLI o mediante archivos de configuración JSON.
+
+### 1. Parámetros de la Red Neuronal de Clasificación (Parte 1: PD)
+
+Desde la carpeta `Parte_1/`:
+```bash
+# A. Búsqueda por etapas automática (oficial):
+python main.py rna
+
+# B. Configuración manual directa por CLI:
+python main.py rna --capas 64 32 --lr 0.001 --dropout 0.2 --l2 1e-4 --activacion tanh --epocas 50 --semillas 5
+
+# C. Desde archivo de configuración JSON:
+python main.py rna --config config.json
+
+# D. Demostración rápida (< 30 s para sustentación):
+python main.py rna --demo
+```
+
+### 2. Parámetros de la Red Neuronal de Regresión (Parte 2: LGD)
+
+Desde la carpeta `Parte_2/`:
+```bash
+# A. Búsqueda por etapas automática (oficial):
+python main.py rna
+
+# B. Configuración manual directa por CLI:
+python main.py rna --capas 64 32 --lr 0.001 --dropout 0.2 --l2 1e-4 --activacion leaky_relu --epocas 40 --semillas 5
+
+# C. Desde archivo de configuración JSON:
+python main.py rna --config config.json
+
+# D. Demostración rápida (< 30 s para sustentación):
+python main.py rna --demo
+```
+
+### 3. Parámetros del Scorecard y Modelos de Referencia
+
+```bash
+# Calibrar escala del Scorecard (Parte 1):
+python main.py scorecard --base 600 --odds 5 --pdo 20
+python main.py scorecard --config config.json
+
+# Penalización L2 de Regresión Logística (Parte 1, C = 1 / lambda):
+python main.py rl --C 0.1
+python main.py rl --config config.json
+
+# Penalización L2 de Regresión Ridge (Parte 2, alpha):
+python main.py rl --alpha 1.0
+python main.py rl --config config.json
+```
+
+### Tabla de Hiperparámetros Disponibles
+
+| Parámetro | Argumento CLI | Clave JSON | Valores permitidos / Ejemplos | Defecto Parte 1 | Defecto Parte 2 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Arquitectura** | `--capas` | `"capas"` | Lista de enteros (ej. `64 32`) | `[32, 16]` | `[32, 16]` |
+| **Tasa de aprendizaje** | `--lr` | `"lr"` | Decimal (ej. `0.001`, `5e-4`) | `1e-3` | `1e-3` |
+| **Dropout (regularización)**| `--dropout` | `"dropout"` | Decimal en $[0, 1)$ (ej. `0.2`) | `0.2` | `0.2` |
+| **Weight Decay / L2** | `--l2` | `"l2"` | Decimal (ej. `1e-4`, `1e-5`) | `1e-4` | `1e-4` |
+| **Función de activación** | `--activacion` | `"activacion"` | `relu`, `tanh` (LGD: `leaky_relu`) | `relu` | `relu` |
+| **Optimizador** | `--optimizador`| `"optimizador"`| `adam`, `sgd` | `adam` | `adam` |
+| **Máximo de épocas** | `--epocas` | `"epocas"` | Entero positivo (ej. `50`) | `60` (`10` en demo) | `40` (`10` en demo) |
+| **Semillas independientes**| `--semillas` | `"semillas"` | Entero positivo (ej. `30`) | `30` (`3` en demo) | `30` (`3` en demo) |
+| **Parada temprana** | `--paciencia` | `"paciencia"` | Entero positivo | `10` | `10` |
+| **Puntaje Base** | `--base` | `"base"` | Número real (ej. `600`) | `600` | N/A |
+| **Odds de referencia** | `--odds` | `"odds"` | Número real (ej. `5` para 5:1) | `5` | N/A |
+| **Puntos duplicar odds**| `--pdo` | `"pdo"` | Número real (ej. `20`) | `20` | N/A |
+
+### Estructura de Ejemplo de `config.json`
+```json
+{
+  "capas": [64, 32],
+  "activacion": "relu",
+  "dropout": 0.2,
+  "l2": 0.0001,
+  "optimizador": "adam",
+  "lr": 0.001,
+  "epocas": 40,
+  "semillas": 5,
+  "paciencia": 10
+}
+```
+
+---
 
 ## Orden de ejecución y qué genera cada comando
 

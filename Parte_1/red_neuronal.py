@@ -1,31 +1,30 @@
 """
 Tarea 4: perceptrón multicapa (MLP) para la probabilidad de incumplimiento.
 
-Uso:  python red_neuronal.py
+Uso:
+  python red_neuronal.py                                                  # búsqueda secuencial completa
+  python red_neuronal.py --demo                                           # modo demo rápido (< 30 s)
+  python red_neuronal.py --capas 64 32 --lr 0.001 --dropout 0.2 --l2 1e-4  # configuración manual directa
+  python red_neuronal.py --config config.json                             # desde archivo de configuración
 
-Pasos:
-  1. Búsqueda por etapas (un hiperparámetro a la vez, partiendo de una configuración base).
-  2. Entrenamiento de la mejor configuración con 30 semillas.
-  3. Importancia por permutación en validación y resumen (media, desviación, mejor y peor).
-
-Por qué esta búsqueda: la rejilla completa sería de cientos de combinaciones y el azar desperdicia
-intentos en configuraciones malas. Cada etapa varía UN hiperparámetro con los demás fijos en lo mejor
-encontrado hasta ese momento. Es determinista, el presupuesto se conoce de antemano (N configuraciones x
-SEMILLAS_BUSQUEDA entrenamientos) y se puede explicar qué aportó cada decisión. Limitación: no explora
-interacciones entre hiperparámetros. El criterio es la pérdida de validación promedio entre semillas.
-
-Datos: los mismos de la regresión logística (preparar() sin opciones: mismo preprocesamiento y particiones).
-
-Salidas:
-  modelos/red_neuronal.pt          modelo de la semilla con mejor AUC en validación
-  resultados/t4_busqueda.csv       una fila por configuración probada
-  resultados/t4_semillas.csv       métricas de cada semilla en cada partición
-  resultados/t4_probs.npz          probabilidades de las 30 semillas
-  resultados/t4_curvas.csv         pérdida de entrenamiento y validación por época (semilla 0)
-  resultados/t4_importancia.csv    caída de AUC en validación al barajar cada variable
+Opciones por línea de comandos o archivo de configuración:
+  --config       ruta a archivo JSON con hiperparámetros
+  --capas        neuronas por capa oculta (ej. --capas 64 32)
+  --lr           tasa de aprendizaje / learning rate (ej. --lr 0.001)
+  --dropout      tasa de regularización dropout (ej. --dropout 0.2)
+  --l2           regularización L2 / weight decay (ej. --l2 1e-4)
+  --activacion   función de activación: relu o tanh (ej. --activacion relu)
+  --optimizador  optimizador: adam o sgd (ej. --optimizador adam)
+  --epocas       máximo de épocas de entrenamiento por semilla (defecto: 60)
+  --semillas     número de semillas para entrenamiento final (defecto: 30)
+  --paciencia    épocas para parada temprana / early stopping (defecto: 10)
+  --sin-busqueda entrena directamente la configuración dada/base sin búsqueda por etapas
+  --demo         versión rápida (< 30 s) con 3 semillas para demostración
 """
 import argparse
+import json
 import os
+import sys
 import time
 
 import numpy as np
@@ -66,8 +65,9 @@ class RedNeuronal(nn.Module):
     def __init__(self, n_entrada, capas, dropout, activacion="relu"):
         super().__init__()
         bloques, anterior = [], n_entrada
+        act_fn = ACTIVACIONES.get(activacion, nn.ReLU)
         for neuronas in capas:
-            bloques += [nn.Linear(anterior, neuronas), ACTIVACIONES[activacion](), nn.Dropout(dropout)]
+            bloques += [nn.Linear(anterior, neuronas), act_fn(), nn.Dropout(dropout)]
             anterior = neuronas
         bloques.append(nn.Linear(anterior, 1))
         self.red = nn.Sequential(*bloques)
@@ -105,7 +105,7 @@ def cargar_red(ruta="modelos/red_neuronal.pt"):
 
 
 # ----------------------------- ENTRENAMIENTO -----------------------------
-def entrenar(config, datos, semilla, max_epocas=EPOCAS):
+def entrenar(config, datos, semilla, max_epocas=EPOCAS, paciencia=PACIENCIA):
     """Mini-lotes con parada temprana sobre la pérdida de validación.
 
     datos = (X_ent, y_ent, X_val, y_val) como tensores. Devuelve (modelo con los mejores pesos,
@@ -113,8 +113,8 @@ def entrenar(config, datos, semilla, max_epocas=EPOCAS):
     """
     X_ent, y_ent, X_val, y_val = datos
     torch.manual_seed(semilla)
-    modelo = RedNeuronal(X_ent.shape[1], config["capas"], config["dropout"], config["activacion"]).to(DISPOSITIVO)
-    if config["optimizador"] == "sgd":
+    modelo = RedNeuronal(X_ent.shape[1], config["capas"], config["dropout"], config.get("activacion", "relu")).to(DISPOSITIVO)
+    if config.get("optimizador") == "sgd":
         optimizador = torch.optim.SGD(modelo.parameters(), lr=config["lr"], momentum=0.9, weight_decay=config["l2"])
     else:
         optimizador = torch.optim.Adam(modelo.parameters(), lr=config["lr"], weight_decay=config["l2"])
@@ -146,7 +146,7 @@ def entrenar(config, datos, semilla, max_epocas=EPOCAS):
             mejores_pesos = {k: v.detach().clone() for k, v in modelo.state_dict().items()}
         else:
             sin_mejora += 1
-            if sin_mejora >= PACIENCIA:
+            if sin_mejora >= paciencia:
                 break
     if mejores_pesos is not None:
         modelo.load_state_dict(mejores_pesos)
@@ -154,9 +154,9 @@ def entrenar(config, datos, semilla, max_epocas=EPOCAS):
 
 
 # ----------------------------- PASOS DEL PROGRAMA -----------------------------
-def probar(config, datos, filas):
+def probar(config, datos, filas, paciencia=PACIENCIA):
     """Entrena una configuración con SEMILLAS_BUSQUEDA semillas y devuelve su fila de resultados."""
-    r = [entrenar(config, datos, 100 + s) for s in range(SEMILLAS_BUSQUEDA)]
+    r = [entrenar(config, datos, 100 + s, paciencia=paciencia) for s in range(SEMILLAS_BUSQUEDA)]
     fila = {**config, "perdida_val": float(np.mean([x[1] for x in r])), "desv_val": float(np.std([x[1] for x in r])),
             "epocas": float(np.mean([x[2] for x in r])), "segundos": float(sum(x[3] for x in r)),
             "parametros": contar_parametros(r[-1][0])}
@@ -185,13 +185,13 @@ def buscar(datos):
     return mejor, float(tabla["segundos"].sum()), tabla
 
 
-def entrenar_semillas(config, datos, X, y, n_semillas=N_SEMILLAS, max_epocas=EPOCAS, sufijo=""):
+def entrenar_semillas(config, datos, X, y, n_semillas=N_SEMILLAS, max_epocas=EPOCAS, paciencia=PACIENCIA, sufijo=""):
     """Entrena la configuración final con N_SEMILLAS semillas y guarda métricas, probabilidades y curvas."""
     print(f"\nENTRENAMIENTO FINAL ({n_semillas} semillas)")
     registros, probs = [], {nombre: [] for nombre in X}
     mejor_auc, mejor_modelo, mejor_semilla, curvas, t_total = -1, None, None, None, 0.0
     for semilla in range(n_semillas):
-        modelo, _, epocas, seg, historial = entrenar(config, datos, semilla, max_epocas=max_epocas)
+        modelo, _, epocas, seg, historial = entrenar(config, datos, semilla, max_epocas=max_epocas, paciencia=paciencia)
         t_total += seg
         if semilla == 0:
             curvas = pd.DataFrame(historial, columns=["epoca", "perdida_ent", "perdida_val"])
@@ -210,6 +210,7 @@ def entrenar_semillas(config, datos, X, y, n_semillas=N_SEMILLAS, max_epocas=EPO
     curvas.to_csv(f"resultados/t4_curvas{sufijo}.csv", index=False)
     np.savez_compressed(f"resultados/t4_probs{sufijo}.npz", **{k: np.array(v) for k, v in probs.items()})
     return semillas, mejor_modelo, mejor_semilla, t_total
+
 
 def importancia_permutacion(modelo, X, y):
     """Caída del AUC al barajar cada columna de X. Una caída <= 0 sugiere una variable sin aporte."""
@@ -232,7 +233,7 @@ def resumir(config, semillas, mejor_modelo, mejor_semilla, n_configs, t_busqueda
     print(f"\nConfiguración: {config}")
     print(f"Parámetros entrenables: {contar_parametros(mejor_modelo)}")
     print(f"Presupuesto: {n_configs} configuraciones x {SEMILLAS_BUSQUEDA} semillas ({t_busqueda:.0f} s) + "
-          f"{N_SEMILLAS} semillas finales ({t_semillas:.0f} s); tiempo total {t_total:.0f} s")
+          f"{len(semillas['semilla'].unique())} semillas finales ({t_semillas:.0f} s); tiempo total {t_total:.0f} s")
     print(f"Modelo guardado: semilla {mejor_semilla} (mejor AUC de validación)")
     for nombre in semillas["particion"].unique():
         tabla = semillas[semillas["particion"] == nombre][metricas]
@@ -242,46 +243,113 @@ def resumir(config, semillas, mejor_modelo, mejor_semilla, n_configs, t_busqueda
 
 
 def main():
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--demo", action="store_true", help="versión rápida (< 30 s) con 3 semillas para demostración")
+    p.add_argument("--config", type=str, default=None, help="ruta a archivo JSON con hiperparámetros (ej: config.json)")
+    p.add_argument("--capas", type=int, nargs="+", default=None, help="neuronas por capa oculta (ej: --capas 64 32)")
+    p.add_argument("--lr", type=float, default=None, help="tasa de aprendizaje / learning rate (ej: --lr 0.001)")
+    p.add_argument("--dropout", type=float, default=None, help="tasa de regularización dropout (ej: --dropout 0.2)")
+    p.add_argument("--l2", type=float, default=None, help="regularización L2 / weight decay (ej: --l2 1e-4)")
+    p.add_argument("--activacion", type=str, choices=["relu", "tanh"], default=None, help="función de activación")
+    p.add_argument("--optimizador", type=str, choices=["adam", "sgd"], default=None, help="optimizador (adam o sgd)")
+    p.add_argument("--epocas", type=int, default=None, help="máximo de épocas por semilla (defecto: 60, o 10 con --demo)")
+    p.add_argument("--semillas", type=int, default=None, help="cantidad de semillas para entrenamiento final (defecto: 30, o 3 con --demo)")
+    p.add_argument("--paciencia", type=int, default=PACIENCIA, help=f"épocas para early stopping (defecto: {PACIENCIA})")
+    p.add_argument("--sin-busqueda", action="store_true", help="entrenar directamente la configuración dada/base sin búsqueda por etapas")
+    a = p.parse_args()
+
+    ruta_config = os.path.abspath(a.config) if a.config else None
+
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     os.makedirs("modelos", exist_ok=True)
     os.makedirs("resultados", exist_ok=True)
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--demo", action="store_true", help="versión rápida (< 30 s) con 3 semillas para demostración")
-    a = p.parse_args()
+
     sufijo = "_demo" if a.demo else ""
     t0 = time.perf_counter()
 
-    # 1. Datos: los mismos de la regresión logística
+    # Cargar configuración base o desde archivo JSON
+    config = dict(BASE)
+    if ruta_config:
+        if not os.path.exists(ruta_config):
+            sys.exit(f"Error: No se encontró el archivo de configuración '{a.config}'")
+        with open(ruta_config, "r", encoding="utf-8") as f:
+            cfg_json = json.load(f)
+            config.update({k: v for k, v in cfg_json.items() if k in config})
+            if "epocas" in cfg_json and a.epocas is None:
+                a.epocas = cfg_json["epocas"]
+            if "semillas" in cfg_json and a.semillas is None:
+                a.semillas = cfg_json["semillas"]
+            if "paciencia" in cfg_json:
+                a.paciencia = cfg_json["paciencia"]
+
+    # Sobreescribir con flags CLI si fueron pasados
+    if a.capas is not None:
+        config["capas"] = a.capas
+    if a.lr is not None:
+        config["lr"] = a.lr
+    if a.dropout is not None:
+        config["dropout"] = a.dropout
+    if a.l2 is not None:
+        config["l2"] = a.l2
+    if a.activacion is not None:
+        config["activacion"] = a.activacion
+    if a.optimizador is not None:
+        config["optimizador"] = a.optimizador
+
+    es_manual = any([ruta_config, a.capas, a.lr, a.dropout, a.l2, a.activacion, a.optimizador, a.sin_busqueda])
+
+    n_semillas = 3 if a.demo else (a.semillas if a.semillas is not None else N_SEMILLAS)
+    max_epocas = 10 if a.demo else (a.epocas if a.epocas is not None else EPOCAS)
+
+    # 1. Datos
     prep, X, y, _ = preparar()
     datos = (*a_tensor(X["entrenamiento"], y["entrenamiento"]), *a_tensor(X["validacion"], y["validacion"]))
     print(f"Dispositivo: {DISPOSITIVO} | entrenamiento {len(y['entrenamiento']):,} | "
           f"validación {len(y['validacion']):,} | prueba {len(y['prueba']):,} | "
           f"{X['entrenamiento'].shape[1]} variables de entrada")
 
-    # 2. Búsqueda y entrenamiento final
+    # 2. Búsqueda o entrenamiento directo
     if a.demo:
-        config = BASE
-        print(f"\nMODO DEMO: evaluando configuración base {config}")
-        _, perdida_val, ep_val, t_busqueda, _ = entrenar(config, datos, semilla=0, max_epocas=10)
+        print(f"\nMODO DEMO: evaluando configuración {config} (épocas={max_epocas}, semillas={n_semillas})")
+        _, perdida_val, ep_val, t_busqueda, _ = entrenar(config, datos, semilla=0, max_epocas=max_epocas, paciencia=a.paciencia)
         tabla = pd.DataFrame([{
             "etapa": "base_demo",
             **config,
             "perdida_val": round(perdida_val, 4),
             "epocas": ep_val,
             "segundos": round(t_busqueda, 2),
-            "parametros": contar_parametros(RedNeuronal(X["entrenamiento"].shape[1], config["capas"], config["dropout"], config["activacion"])),
+            "parametros": contar_parametros(RedNeuronal(X["entrenamiento"].shape[1], config["capas"], config["dropout"], config.get("activacion", "relu"))),
         }])
         tabla.to_csv("resultados/t4_busqueda_demo.csv", index=False)
         print(f"  Pérdida validación base: {perdida_val:.4f} ({t_busqueda:.1f} s)")
         semillas, mejor_modelo, mejor_semilla, t_semillas = entrenar_semillas(
-            config, datos, X, y, n_semillas=3, max_epocas=10, sufijo="_demo"
+            config, datos, X, y, n_semillas=n_semillas, max_epocas=max_epocas, paciencia=a.paciencia, sufijo="_demo"
+        )
+    elif es_manual:
+        print(f"\n[Configuración manual directa]: {config} (épocas={max_epocas}, semillas={n_semillas})")
+        _, perdida_val, ep_val, t_busqueda, _ = entrenar(config, datos, semilla=0, max_epocas=max_epocas, paciencia=a.paciencia)
+        tabla = pd.DataFrame([{
+            "etapa": "manual_directa",
+            **config,
+            "perdida_val": round(perdida_val, 4),
+            "epocas": ep_val,
+            "segundos": round(t_busqueda, 2),
+            "parametros": contar_parametros(RedNeuronal(X["entrenamiento"].shape[1], config["capas"], config["dropout"], config.get("activacion", "relu"))),
+        }])
+        tabla.to_csv("resultados/t4_busqueda.csv", index=False)
+        print(f"  Pérdida validación inicial: {perdida_val:.4f} ({t_busqueda:.1f} s)")
+        semillas, mejor_modelo, mejor_semilla, t_semillas = entrenar_semillas(
+            config, datos, X, y, n_semillas=n_semillas, max_epocas=max_epocas, paciencia=a.paciencia, sufijo=""
         )
     else:
         config, t_busqueda, tabla = buscar(datos)
         tabla.to_csv("resultados/t4_busqueda.csv", index=False)
         print(f"\nCONFIGURACIÓN FINAL: {config}")
         semillas, mejor_modelo, mejor_semilla, t_semillas = entrenar_semillas(
-            config, datos, X, y, n_semillas=N_SEMILLAS, max_epocas=EPOCAS, sufijo=""
+            config, datos, X, y, n_semillas=n_semillas, max_epocas=max_epocas, paciencia=a.paciencia, sufijo=""
         )
 
     torch.save({"config": config, "n_entrada": X["entrenamiento"].shape[1], "pesos": mejor_modelo.state_dict(),

@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import sys
 
@@ -60,7 +61,7 @@ def entrenar_modelo_referencia(alpha=1.0):
     prep.fit(X_train_raw)
     X_train = prep.transform(X_train_raw)
 
-    #Entrenamiento
+    # Entrenamiento
     modelo = RegresionRidgeAcotada(alpha=alpha)
     modelo.fit(X_train, y_train)
 
@@ -78,8 +79,20 @@ def entrenar_modelo_referencia(alpha=1.0):
 def main():
     parser = argparse.ArgumentParser(description="Tarea 2 (Parte 2): Modelo de referencia Ridge para LGD")
     parser.add_argument("--alpha", type=float, default=1.0, help="inverso de la regularización L2 / alpha de Ridge (defecto: 1.0)")
+    parser.add_argument("--config", type=str, default=None, help="ruta a archivo JSON con parámetro alpha")
     args = parser.parse_args()
-    entrenar_modelo_referencia(alpha=args.alpha)
+
+    ruta_config = os.path.abspath(args.config) if args.config else None
+    alpha = args.alpha
+    if ruta_config:
+        if not os.path.exists(ruta_config):
+            sys.exit(f"Error: No se encontró el archivo de configuración '{args.config}'")
+        with open(ruta_config, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+            if "alpha" in cfg:
+                alpha = cfg["alpha"]
+
+    entrenar_modelo_referencia(alpha=alpha)
 
 
 if __name__ == "__main__":
