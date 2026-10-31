@@ -252,10 +252,13 @@ def entrenar_semillas_finales(config, datos, X, y, n_semillas=N_SEMILLAS, epocas
         modelo, _, ep_usadas, seg = entrenar_una_corrida(config, datos, semilla, epocas=epocas, paciencia=paciencia)
         t_total += seg
 
-        # Evaluamos métricas de regresión (MAE y RMSE) en validación y prueba
+        # Evaluamos métricas de regresión (MAE y RMSE) en entrenamiento, validación y prueba
+        preds_train = predecir_lgd(modelo, X["entrenamiento"])
         preds_val = predecir_lgd(modelo, X["validacion"])
         preds_test = predecir_lgd(modelo, X["prueba"])
 
+        mae_train = mean_absolute_error(y["entrenamiento"], preds_train)
+        rmse_train = root_mean_squared_error(y["entrenamiento"], preds_train)
         mae_val = mean_absolute_error(y["validacion"], preds_val)
         rmse_val = root_mean_squared_error(y["validacion"], preds_val)
         mae_test = mean_absolute_error(y["prueba"], preds_test)
@@ -263,6 +266,8 @@ def entrenar_semillas_finales(config, datos, X, y, n_semillas=N_SEMILLAS, epocas
 
         registros.append({
             "semilla": semilla,
+            "MAE_train": mae_train,
+            "RMSE_train": rmse_train,
             "MAE_val": mae_val,
             "RMSE_val": rmse_val,
             "MAE_test": mae_test,

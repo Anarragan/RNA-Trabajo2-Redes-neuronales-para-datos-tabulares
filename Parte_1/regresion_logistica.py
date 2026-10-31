@@ -1,7 +1,7 @@
 """
 Tarea 3: regresión logística de referencia. Guarda modelos/regresion_logistica.joblib y resultados/t3_resumen.csv.
 
-    python regresion_logistica.py            # busca C entre 10 valores (mismo presupuesto que la red)
+    python regresion_logistica.py            # busca C con tantos valores como configuraciones prueba la red (mismo presupuesto que la red)
     python regresion_logistica.py --C 0.1    # un valor fijo, sin búsqueda
     python regresion_logistica.py --config config.json
 """
@@ -20,9 +20,10 @@ from sklearn.metrics import log_loss
 
 from metricas import tabla_metricas
 from preprocesamiento import preparar
+from red_neuronal import ETAPAS
 
 parser = argparse.ArgumentParser(description="Regresión logística de referencia")
-parser.add_argument("--C", type=float, default=None, help="inverso de la penalización L2 (menor = más penalización); sin él se busca entre 10 valores")
+parser.add_argument("--C", type=float, default=None, help="inverso de la penalización L2 (menor = más penalización); sin él se busca con el mismo presupuesto que la red")
 parser.add_argument("--config", type=str, default=None, help="ruta a archivo JSON con parámetro C")
 args = parser.parse_args()
 
@@ -45,8 +46,9 @@ for nombre, parte in partes.items():
     print(f"  {nombre:<13} {len(parte):>8,} registros | tasa de malos {parte['malo'].mean():.3f} "
           f"| {parte['issue_d'].min():%Y-%m} a {parte['issue_d'].max():%Y-%m}")
 
-# 2. Búsqueda de C (mismo criterio y presupuesto que la red: 10 configuraciones, pérdida de validación) -----
-valores_C = [C_param] if C_param is not None else list(np.logspace(-4, 1, 10))
+# 2. Búsqueda de C (mismo criterio y presupuesto que la red: misma cantidad de configuraciones, pérdida de validación) -----
+N_CONFIGS_RED = 1 + sum(len(op) for _, op in ETAPAS)   # configuraciones que prueba la búsqueda por etapas de la red
+valores_C = [C_param] if C_param is not None else list(np.logspace(-4, 1, N_CONFIGS_RED))
 filas, ajustes = [], []
 for C in valores_C:
     t0 = time.perf_counter()

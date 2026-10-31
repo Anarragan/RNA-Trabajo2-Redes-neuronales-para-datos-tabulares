@@ -89,7 +89,7 @@ python main.py rl --C 0.1
 python main.py rl --config config.json
 
 # Penalización L2 de Regresión Ridge (Parte 2, alpha):
-python main.py rl --alpha 1.0
+python main.py rl --alpha 1.0   # sin --alpha se busca con el mismo presupuesto que la red
 python main.py rl --config config.json
 ```
 
@@ -136,13 +136,13 @@ Todo se lanza desde `Parte_1/` con `python main.py <comando> [opciones]`. Las op
 | # | Comando | Script | Lee | Escribe |
 |---|---|---|---|---|
 | 0 | `datos` (solo si se quiere rehacer; necesita `loan.csv` de Kaggle) | `preparacion_datos.py` | `loan.csv` | `data/datos_modelo.csv`, `data/base_lgd.csv` |
-| 1 | `rl` regresión logística (T3; busca `C` en 10 valores) | `regresion_logistica.py` | `data/datos_modelo.csv` | `modelos/regresion_logistica.joblib`, `resultados/t3_busqueda.csv`, `t3_resumen.csv` |
+| 1 | `rl` regresión logística (T3; busca `C` con el mismo número de configuraciones que la red) | `regresion_logistica.py` | `data/datos_modelo.csv` | `modelos/regresion_logistica.joblib`, `resultados/t3_busqueda.csv`, `t3_resumen.csv` |
 | 2 | `rna` red neuronal (T4) | `red_neuronal.py` | `data/datos_modelo.csv` | `modelos/red_neuronal.pt`, `resultados/t4_busqueda.csv`, `t4_semillas.csv` (el resumen se imprime en consola) |
 | 3 | `evaluar` (T5) | `evaluacion.py` | datos + los dos modelos | `resultados/t5_metricas.csv`, `t5_particiones.csv`, `figuras/t5_calibracion.png`, `t5_roc.png` |
 | 4 | `scorecard` (T6) | `scorecard_red_neuronal.py` | datos + `red_neuronal.pt` | `modelos/scorecard.joblib`, `resultados/t6_rn_puntos_variables.csv` |
 | 5 | `comparar` | `comparar.py` | `t3_resumen.csv`, `t4_*.csv`, `red_neuronal.pt` | `resultados/comparacion.csv` (una sola tabla: configuraciones, tiempo, parámetros, semillas, media/desv/mejor/peor) |
 
-Comparación justa: ambos modelos usan las mismas particiones y el mismo preprocesamiento, prueban 10 configuraciones elegidas por pérdida de validación y reportan tiempo de búsqueda y de entrenamiento final por separado (`comparar`).
+Comparación justa: ambos modelos usan las mismas particiones y el mismo preprocesamiento, prueban el mismo número de configuraciones (el de la búsqueda de la red) elegidas por pérdida de validación y reportan tiempo de búsqueda y de entrenamiento final por separado (`comparar`).
 
 `todo` corre 1 a 5 (no incluye `datos`). Con `--demo`, `rna` y `evaluar` escriben archivos `*_demo.*` (ignorados por git) y no pisan los reales.
 
@@ -153,10 +153,10 @@ Todo se lanza desde `Parte_2/` con `python main.py <comando> [opciones]`.
 | # | Comando | Script | Lee | Escribe |
 |---|---|---|---|---|
 | 0 | `datos` construcción objetivo LGD | `construccion_lgd.py` | `../Parte_1/data/base_lgd.csv` | `resultados/lgd_procesado.csv` |
-| 1 | `rl` regresión lineal Ridge acotada (T2) | `regresion_lineal.py` | `resultados/lgd_procesado.csv` | `modelos/regresion_lineal.joblib`, `modelos/preprocesador_lgd.joblib` |
+| 1 | `rl` regresión lineal Ridge acotada (T2; busca `alpha` con el mismo número de configuraciones que la red, por MSE de validación) | `regresion_lineal.py` | `resultados/lgd_procesado.csv` | `modelos/regresion_lineal.joblib`, `modelos/preprocesador_lgd.joblib`, `resultados/t2_busqueda_ridge.csv`, `t2_resumen_ridge.csv` |
 | 2 | `rna` red neuronal MLP para LGD (T3) | `red_neuronal_lgd.py` | `resultados/lgd_procesado.csv` | `modelos/red_neuronal_lgd.pt`, `resultados/t4_resumen.txt` |
 | 3 | `evaluar` y Pérdida Esperada (T4-T5) | `evaluacion.py` | datos + modelos | `figuras/t4_distribucion_lgd.png`, `resultados/t4_predicciones_lgd.csv`, `resultados/t5_perdida_esperada.csv` |
-| 4 | `comparar` | `comparar.py` | datos + modelos | `resultados/comparacion_lgd.csv` |
+| 4 | `comparar` | `comparar.py` | datos + modelos + búsquedas | `resultados/comparacion_lgd.csv` (configuraciones, tiempos, parámetros, semillas, media/desv/mejor/peor) |
 
 `todo` corre del 0 al 4 en orden. Con `--demo`, `rna` y `evaluar` corren en versión rápida (< 30 s).
 

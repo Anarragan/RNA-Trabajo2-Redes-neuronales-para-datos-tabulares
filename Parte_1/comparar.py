@@ -51,7 +51,7 @@ def main():
     out.to_csv("resultados/comparacion.csv", index=False)
     pd.set_option("display.width", 250)
     print(out[out["particion"] == "prueba"].round(4).T.to_string(header=False))
-    print(f"\nCondiciones: mismas particiones y preprocesamiento; {rl['n_configuraciones'].iloc[0]} configuraciones por familia, "
+    print(f"\nCondiciones: mismas particiones y preprocesamiento; {rl['n_configuraciones'].iloc[0]} configuraciones (regresión logística) y {len(busqueda)} (red), "
           "elegidas por pérdida de validación.\nLa regresión logística es determinista (sin semillas): su desviación es n/a. "
           "tiempo_total = búsqueda + entrenamientos finales (RNA: 30 semillas).\nTabla completa en resultados/comparacion.csv")
 

@@ -26,6 +26,9 @@ def main():
     modelo_base = cargar_modelo_referencia("modelos/regresion_lineal.joblib")
     n_params_base = len(modelo_base.model.coef_) + 1
 
+    res_ridge = pd.read_csv("resultados/t2_resumen_ridge.csv").iloc[0]
+    t_busq_base, t_fin_base = float(res_ridge["tiempo_busqueda_s"]), float(res_ridge["tiempo_final_s"])
+
     filas = []
     for part in ["entrenamiento", "validacion", "prueba"]:
         preds = modelo_base.predict(X[part])
@@ -34,7 +37,10 @@ def main():
         filas.append({
             "modelo": "Regresión Ridge",
             "particion": part,
-            "n_configuraciones": 1,
+            "n_configuraciones": int(res_ridge["n_configuraciones"]),
+            "tiempo_busqueda_s": round(t_busq_base, 2),
+            "tiempo_final_s": round(t_fin_base, 2),
+            "tiempo_total_s": round(t_busq_base + t_fin_base, 2),
             "parametros": n_params_base,
             "n_semillas": 1,
             "MAE_media": mae,
@@ -51,14 +57,18 @@ def main():
     modelo_nn, config_nn = cargar_red_lgd("modelos/red_neuronal_lgd.pt")
     n_params_nn = contar_parametros(modelo_nn)
 
-    busqueda = pd.read_csv("resultados/t4_busqueda_lgd.csv") if os.path.exists("resultados/t4_busqueda_lgd.csv") else pd.DataFrame([{"segundos": 0}])
+    busqueda = pd.read_csv("resultados/t4_busqueda_lgd.csv")
     semillas = pd.read_csv("resultados/t4_semillas_lgd.csv")
+    t_busq_nn, t_fin_nn = busqueda["segundos"].sum(), semillas["segundos"].sum()
 
-    for part, col_mae, col_rmse in [("validacion", "MAE_val", "RMSE_val"), ("prueba", "MAE_test", "RMSE_test")]:
+    for part, col_mae, col_rmse in [("entrenamiento", "MAE_train", "RMSE_train"), ("validacion", "MAE_val", "RMSE_val"), ("prueba", "MAE_test", "RMSE_test")]:
         filas.append({
             "modelo": f"Red Neuronal ({config_nn['capas']})",
             "particion": part,
             "n_configuraciones": len(busqueda),
+            "tiempo_busqueda_s": round(t_busq_nn, 2),
+            "tiempo_final_s": round(t_fin_nn, 2),
+            "tiempo_total_s": round(t_busq_nn + t_fin_nn, 2),
             "parametros": n_params_nn,
             "n_semillas": len(semillas),
             "MAE_media": semillas[col_mae].mean(),
@@ -75,7 +85,7 @@ def main():
     df_comp.to_csv("resultados/comparacion_lgd.csv", index=False)
     print("\n--- COMPARACIÓN MODELOS LGD (Partición de Prueba) ---")
     prueba_df = df_comp[df_comp["particion"] == "prueba"]
-    print(prueba_df[["modelo", "parametros", "n_semillas", "MAE_media", "MAE_desv", "RMSE_media", "RMSE_desv"]].to_string(index=False))
+    print(prueba_df[["modelo", "n_configuraciones", "tiempo_total_s", "parametros", "n_semillas", "MAE_media", "MAE_desv", "RMSE_media", "RMSE_desv"]].to_string(index=False))
     print(f"\n[OK] Tabla comparativa guardada en 'resultados/comparacion_lgd.csv'")
 
 
