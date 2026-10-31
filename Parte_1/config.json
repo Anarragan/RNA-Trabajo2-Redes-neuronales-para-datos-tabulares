@@ -1,0 +1,15 @@
+{
+  "capas": [32, 16],
+  "activacion": "relu",
+  "dropout": 0.2,
+  "l2": 0.0001,
+  "optimizador": "adam",
+  "lr": 0.001,
+  "epocas": 40,
+  "semillas": 5,
+  "paciencia": 10,
+  "C": 0.1,
+  "base": 600,
+  "odds": 5,
+  "pdo": 20
+}

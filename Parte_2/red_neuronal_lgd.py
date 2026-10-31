@@ -1,4 +1,28 @@
+"""
+Tarea 3 (Parte 2): Red Neuronal MLP para LGD (Pérdida Dado el Incumplimiento).
+
+Uso:
+  python red_neuronal_lgd.py                                                  # búsqueda secuencial completa
+  python red_neuronal_lgd.py --demo                                           # versión rápida (< 30 s)
+  python red_neuronal_lgd.py --capas 64 32 --lr 0.001 --dropout 0.2 --l2 1e-4 # configuración manual directa
+  python red_neuronal_lgd.py --config config.json                             # desde archivo de configuración
+
+Opciones por línea de comandos o archivo de configuración:
+  --config       ruta a archivo JSON con hiperparámetros
+  --capas        neuronas por capa oculta (ej. --capas 64 32)
+  --lr           tasa de aprendizaje / learning rate (ej. --lr 0.001)
+  --dropout      tasa de regularización dropout (ej. --dropout 0.2)
+  --l2           regularización L2 / weight decay (ej. --l2 1e-4)
+  --activacion   función de activación: relu, tanh, leaky_relu (ej. --activacion relu)
+  --optimizador  optimizador: adam o sgd (ej. --optimizador adam)
+  --epocas       máximo de épocas de entrenamiento por semilla (defecto: 40, o 10 con --demo)
+  --semillas     número de semillas para entrenamiento final (defecto: 30, o 3 con --demo)
+  --paciencia    épocas para parada temprana / early stopping (defecto: 10)
+  --sin-busqueda entrena directamente la configuración dada/base sin búsqueda por etapas
+  --demo         versión rápida (< 30 s) con 3 semillas para demostración
+"""
 import argparse
+import json
 import os
 import sys
 import time
@@ -68,10 +92,14 @@ class RedNeuronalLGD(nn.Module):
         for neuronas in capas:
             bloques.append(nn.Linear(anterior, neuronas))
             bloques.append(act_class())
-            bloques.append(nn.Dropout(dropout))
+            if dropout > 0:
+                bloques.append(nn.Dropout(dropout))
             anterior = neuronas
+
+        # Capa lineal final hacia 1 salida escalar
         bloques.append(nn.Linear(anterior, 1))
-        bloques.append(nn.Sigmoid())  # Acota LGD en [0, 1]
+        # Salida acotada estrictamente en el rango continuo [0, 1]
+        bloques.append(nn.Sigmoid())
         self.red = nn.Sequential(*bloques)
 
     def forward(self, x):
@@ -79,42 +107,40 @@ class RedNeuronalLGD(nn.Module):
 
 
 def contar_parametros(modelo):
-    """Retorna el número de parámetros entrenables del modelo."""
+    """Cuenta los parámetros entrenables del modelo."""
     return sum(p.numel() for p in modelo.parameters() if p.requires_grad)
 
 
 def a_tensor(X, y=None):
-    """Convierte arreglos o DataFrames a tensores en el dispositivo configurado."""
-    X_t = torch.as_tensor(np.asarray(X, dtype=np.float32), device=DISPOSITIVO)
+    """Convierte DataFrames/arrays a tensores float32 de PyTorch en el dispositivo adecuado."""
+    X_tensor = torch.as_tensor(np.asarray(X, dtype=np.float32), device=DISPOSITIVO)
     if y is None:
-        return X_t
-    y_t = torch.as_tensor(np.asarray(y, dtype=np.float32), device=DISPOSITIVO).view(-1, 1)
-    return X_t, y_t
+        return X_tensor
+    y_tensor = torch.as_tensor(np.asarray(y, dtype=np.float32), device=DISPOSITIVO).view(-1, 1)
+    return X_tensor, y_tensor
 
 
 def predecir_lgd(modelo, X):
-    """Genera predicciones continuas de LGD acotadas en [0, 1]."""
+    """Genera predicciones continuas de LGD en escala [0, 1]."""
     modelo.eval()
     with torch.no_grad():
-        X_t = a_tensor(X)
-        preds = modelo(X_t).cpu().numpy().ravel()
-        return np.clip(preds, 0.0, 1.0)
+        return modelo(a_tensor(X)).cpu().numpy().ravel()
 
 
-def cargar_red_lgd(ruta=None):
-    """Carga el modelo guardado reconstruyendo dinámicamente su arquitectura."""
-    if ruta is None:
-        ruta = str(CARPETA / "modelos" / "red_neuronal_lgd.pt")
-    guardado = torch.load(str(ruta), map_location=DISPOSITIVO, weights_only=False)
-    c = guardado["config"]
+def cargar_red_lgd(ruta="modelos/red_neuronal_lgd.pt"):
+    """
+    Carga el artefacto serializado del modelo y reconstruye dinámicamente la arquitectura.
+    """
+    guardado = torch.load(ruta, map_location=DISPOSITIVO, weights_only=False)
+    config = guardado["config"]
     modelo = RedNeuronalLGD(
         guardado["n_entrada"],
-        capas=c["capas"],
-        dropout=c["dropout"],
-        activacion=c.get("activacion", "relu"),
+        capas=config["capas"],
+        dropout=config.get("dropout", 0.0),
+        activacion=config.get("activacion", "relu"),
     )
     modelo.to(DISPOSITIVO).load_state_dict(guardado["pesos"])
-    return modelo.eval(), c
+    return modelo.eval(), config
 
 
 # ----------------------------- ENTRENAMIENTO -----------------------------
@@ -178,38 +204,37 @@ def entrenar_una_corrida(config, datos, semilla, epocas=EPOCAS, paciencia=PACIEN
     return modelo, mejor_val, epoca, time.perf_counter() - t0
 
 
-def probar_configuracion(config, datos, filas, epocas=EPOCAS):
-    """Evalúa una configuración candidata en búsqueda."""
-    resultados = [entrenar_una_corrida(config, datos, 100 + s, epocas=epocas) for s in range(SEMILLAS_BUSQUEDA)]
+def probar_configuracion(config, datos, filas, epocas=EPOCAS, paciencia=PACIENCIA):
+    """Evalúa una configuración candidata sobre semillas de búsqueda rápida."""
+    resultados = [entrenar_una_corrida(config, datos, 100 + s, epocas=epocas, paciencia=paciencia) for s in range(SEMILLAS_BUSQUEDA)]
     fila = {
         **config,
-        "loss_mse_val": float(np.mean([x[1] for x in resultados])),
-        "desv_val": float(np.std([x[1] for x in resultados])),
-        "epocas": float(np.mean([x[2] for x in resultados])),
-        "segundos": float(sum(x[3] for x in resultados)),
+        "loss_mse_val": float(np.mean([r[1] for r in resultados])),
+        "epocas": float(np.mean([r[2] for r in resultados])),
+        "segundos": float(sum([r[3] for r in resultados])),
         "parametros": contar_parametros(resultados[-1][0]),
     }
     print(
-        f"  {len(filas) + 1:>2} | MSE val: {fila['loss_mse_val']:.5f} | "
-        f"{fila['epocas']:2.0f} épocas | {fila['segundos']:4.1f} s | {config}"
+        f"  {len(filas) + 1:>2} | MSE val {fila['loss_mse_val']:.5f} | "
+        f"{fila['epocas']:4.0f} épocas | {fila['segundos']:5.1f} s | {config}"
     )
     filas.append(fila)
     return fila
 
 
-def buscar_hiperparametros(datos, epocas=EPOCAS):
+def buscar_hiperparametros(datos, epocas=EPOCAS, paciencia=PACIENCIA):
     """Búsqueda por etapas de la mejor arquitectura e hiperparámetros para LGD."""
     filas = []
     n_configs = 1 + sum(len(op) for _, op in ETAPAS)
     print(f"\nBÚSQUEDA POR ETAPAS LGD ({n_configs} configuraciones, criterio: MSE de validación)")
     mejor = BASE
-    mejor_mse = probar_configuracion(mejor, datos, filas, epocas=epocas)["loss_mse_val"]
+    mejor_mse = probar_configuracion(mejor, datos, filas, epocas=epocas, paciencia=paciencia)["loss_mse_val"]
 
     for claves, opciones in ETAPAS:
         for opcion in opciones:
             valores = opcion if len(claves) > 1 else (opcion,)
             candidata = {**mejor, **dict(zip(claves, valores))}
-            mse = probar_configuracion(candidata, datos, filas, epocas=epocas)["loss_mse_val"]
+            mse = probar_configuracion(candidata, datos, filas, epocas=epocas, paciencia=paciencia)["loss_mse_val"]
             if mse < mejor_mse:
                 mejor, mejor_mse = candidata, mse
 
@@ -217,14 +242,14 @@ def buscar_hiperparametros(datos, epocas=EPOCAS):
     return mejor, float(tabla["segundos"].sum()), tabla
 
 
-def entrenar_semillas_finales(config, datos, X, y, n_semillas=N_SEMILLAS, epocas=EPOCAS):
+def entrenar_semillas_finales(config, datos, X, y, n_semillas=N_SEMILLAS, epocas=EPOCAS, paciencia=PACIENCIA):
     """Entrena la configuración ganadora sobre N semillas y registra estabilidad."""
     print(f"\nENTRENAMIENTO FINAL LGD ({n_semillas} semillas)")
     registros = []
     mejor_mae_val, mejor_modelo, mejor_semilla, t_total = float("inf"), None, None, 0.0
 
     for semilla in range(n_semillas):
-        modelo, _, ep_usadas, seg = entrenar_una_corrida(config, datos, semilla, epocas=epocas)
+        modelo, _, ep_usadas, seg = entrenar_una_corrida(config, datos, semilla, epocas=epocas, paciencia=paciencia)
         t_total += seg
 
         # Evaluamos métricas de regresión (MAE y RMSE) en validación y prueba
@@ -259,18 +284,63 @@ def entrenar_semillas_finales(config, datos, X, y, n_semillas=N_SEMILLAS, epocas
 
 
 def main():
-    os.chdir(CARPETA)
-    parser = argparse.ArgumentParser(description="Tarea 3 (Parte 2): Red Neuronal MLP para LGD")
-    parser.add_argument("--demo", action="store_true", help="versión rápida (< 30 s: configuración base y 3 semillas)")
-    parser.add_argument("--semillas", type=int, default=30, help="semillas para entrenar la red final (defecto: 30)")
-    parser.add_argument("--epocas", type=int, default=40, help="máximo de épocas por semilla (defecto: 40)")
-    parser.add_argument("--sin-busqueda", action="store_true", help="usar configuración base directamente sin búsqueda")
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--demo", action="store_true", help="versión rápida (< 30 s: 10 épocas y 3 semillas)")
+    parser.add_argument("--config", type=str, default=None, help="ruta a archivo JSON con hiperparámetros (ej: config.json)")
+    parser.add_argument("--capas", type=int, nargs="+", default=None, help="neuronas por capa oculta (ej: --capas 64 32)")
+    parser.add_argument("--lr", type=float, default=None, help="tasa de aprendizaje / learning rate (ej: --lr 0.001)")
+    parser.add_argument("--dropout", type=float, default=None, help="tasa de regularización dropout (ej: --dropout 0.2)")
+    parser.add_argument("--l2", type=float, default=None, help="regularización L2 / weight decay (ej: --l2 1e-4)")
+    parser.add_argument("--activacion", type=str, choices=["relu", "tanh", "leaky_relu"], default=None, help="función de activación")
+    parser.add_argument("--optimizador", type=str, choices=["adam", "sgd"], default=None, help="optimizador (adam o sgd)")
+    parser.add_argument("--semillas", type=int, default=None, help="semillas para entrenar la red final (defecto: 30, o 3 con --demo)")
+    parser.add_argument("--epocas", type=int, default=None, help="máximo de épocas por semilla (defecto: 40, o 10 con --demo)")
+    parser.add_argument("--paciencia", type=int, default=PACIENCIA, help=f"épocas para early stopping (defecto: {PACIENCIA})")
+    parser.add_argument("--sin-busqueda", action="store_true", help="usar configuración directa sin búsqueda por etapas")
     args = parser.parse_args()
 
+    ruta_config = os.path.abspath(args.config) if args.config else None
+
+    os.chdir(CARPETA)
     t_inicio = time.perf_counter()
     sufijo = "_demo" if args.demo else ""
-    n_semillas = 3 if args.demo else args.semillas
-    epocas = 10 if args.demo else args.epocas
+
+    # Cargar configuración base o desde JSON
+    config = dict(BASE)
+    if ruta_config:
+        if not os.path.exists(ruta_config):
+            sys.exit(f"Error: No se encontró el archivo de configuración '{args.config}'")
+        with open(ruta_config, "r", encoding="utf-8") as f:
+            cfg_json = json.load(f)
+            config.update({k: v for k, v in cfg_json.items() if k in config})
+            if "epocas" in cfg_json and args.epocas is None:
+                args.epocas = cfg_json["epocas"]
+            if "semillas" in cfg_json and args.semillas is None:
+                args.semillas = cfg_json["semillas"]
+            if "paciencia" in cfg_json:
+                args.paciencia = cfg_json["paciencia"]
+
+    # Sobreescribir con flags CLI si fueron pasados
+    if args.capas is not None:
+        config["capas"] = args.capas
+    if args.lr is not None:
+        config["lr"] = args.lr
+    if args.dropout is not None:
+        config["dropout"] = args.dropout
+    if args.l2 is not None:
+        config["l2"] = args.l2
+    if args.activacion is not None:
+        config["activacion"] = args.activacion
+    if args.optimizador is not None:
+        config["optimizador"] = args.optimizador
+
+    es_manual = any([ruta_config, args.capas, args.lr, args.dropout, args.l2, args.activacion, args.optimizador, args.sin_busqueda])
+
+    n_semillas = 3 if args.demo else (args.semillas if args.semillas is not None else N_SEMILLAS)
+    epocas = 10 if args.demo else (args.epocas if args.epocas is not None else 40)
 
     # 1. Datos
     df = pd.read_csv("resultados/lgd_procesado.csv", parse_dates=["issue_d"])
@@ -291,22 +361,24 @@ def main():
         f"Variables: {X['entrenamiento'].shape[1]}"
     )
 
-    # 2. Búsqueda de hiperparámetros
+    # 2. Búsqueda o configuración directa
     os.makedirs("resultados", exist_ok=True)
     os.makedirs("modelos", exist_ok=True)
 
-    if args.demo or args.sin_busqueda:
-        config = BASE
+    if args.demo:
         t_busqueda = 0.0
-        print(f"\n[Modo rápido] Usando configuración base directa: {config}")
+        print(f"\n[Modo DEMO] Usando configuración: {config} (épocas={epocas}, semillas={n_semillas})")
+    elif es_manual:
+        t_busqueda = 0.0
+        print(f"\n[Configuración manual directa]: {config} (épocas={epocas}, semillas={n_semillas})")
     else:
-        config, t_busqueda, tabla_busqueda = buscar_hiperparametros(datos_tensor, epocas=epocas)
+        config, t_busqueda, tabla_busqueda = buscar_hiperparametros(datos_tensor, epocas=epocas, paciencia=args.paciencia)
         tabla_busqueda.to_csv("resultados/t4_busqueda_lgd.csv", index=False)
         print(f"\nMEJOR CONFIGURACIÓN LGD: {config} (Tiempo búsqueda: {t_busqueda:.1f} s)")
 
     # 3. Entrenamiento con semillas independientes
     df_semillas, mejor_modelo, mejor_semilla, t_semillas = entrenar_semillas_finales(
-        config, datos_tensor, X, y, n_semillas=n_semillas, epocas=epocas
+        config, datos_tensor, X, y, n_semillas=n_semillas, epocas=epocas, paciencia=args.paciencia
     )
     df_semillas.to_csv(f"resultados/t4_semillas_lgd{sufijo}.csv", index=False)
 
@@ -328,18 +400,18 @@ def main():
         f"Parametros Entrenables: {num_params}\n"
         f"Semillas evaluadas: {n_semillas} (Mejor semilla: {mejor_semilla})\n"
         f"Tiempo busqueda: {t_busqueda:.1f} s | Tiempo semillas: {t_semillas:.1f} s | Total: {t_total:.1f} s\n\n"
-        f"[Prueba - 30 semillas]\n"
+        f"[Prueba - {n_semillas} semillas]\n"
         f"MAE:  {df_semillas['MAE_test'].mean():.4f} +/- {df_semillas['MAE_test'].std():.4f} "
         f"(Mejor: {df_semillas['MAE_test'].min():.4f} | Peor: {df_semillas['MAE_test'].max():.4f})\n"
         f"RMSE: {df_semillas['RMSE_test'].mean():.4f} +/- {df_semillas['RMSE_test'].std():.4f} "
         f"(Mejor: {df_semillas['RMSE_test'].min():.4f} | Peor: {df_semillas['RMSE_test'].max():.4f})\n"
     )
 
-    with open("resultados/t4_resumen.txt", "w") as f:
+    with open(f"resultados/t4_resumen{sufijo}.txt", "w") as f:
         f.write(resumen)
 
     print("\n" + resumen)
-    print(f"[OK] Modelo guardado en '{ruta_modelo}' y resumen en 'resultados/t4_resumen.txt'")
+    print(f"[OK] Modelo guardado en '{ruta_modelo}' y resumen en 'resultados/t4_resumen{sufijo}.txt'")
 
 
 if __name__ == "__main__":

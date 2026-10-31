@@ -3,9 +3,12 @@ Tarea 3: regresión logística de referencia. Guarda modelos/regresion_logistica
 
     python regresion_logistica.py            # busca C entre 10 valores (mismo presupuesto que la red)
     python regresion_logistica.py --C 0.1    # un valor fijo, sin búsqueda
+    python regresion_logistica.py --config config.json
 """
 import argparse
+import json
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -18,11 +21,22 @@ from sklearn.metrics import log_loss
 from metricas import tabla_metricas
 from preprocesamiento import preparar
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))  # las rutas (data/, modelos/) son relativas a Parte_1
-
 parser = argparse.ArgumentParser(description="Regresión logística de referencia")
 parser.add_argument("--C", type=float, default=None, help="inverso de la penalización L2 (menor = más penalización); sin él se busca entre 10 valores")
+parser.add_argument("--config", type=str, default=None, help="ruta a archivo JSON con parámetro C")
 args = parser.parse_args()
+
+ruta_config = os.path.abspath(args.config) if args.config else None
+os.chdir(os.path.dirname(os.path.abspath(__file__)))  # las rutas (data/, modelos/) son relativas a Parte_1
+
+C_param = args.C
+if ruta_config:
+    if not os.path.exists(ruta_config):
+        sys.exit(f"Error: No se encontró el archivo de configuración '{args.config}'")
+    with open(ruta_config, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+        if "C" in cfg and C_param is None:
+            C_param = cfg["C"]
 
 # 1. Datos: partición temporal + preprocesamiento ajustado solo con entrenamiento ------------
 prep, X, y, partes = preparar()
@@ -32,7 +46,7 @@ for nombre, parte in partes.items():
           f"| {parte['issue_d'].min():%Y-%m} a {parte['issue_d'].max():%Y-%m}")
 
 # 2. Búsqueda de C (mismo criterio y presupuesto que la red: 10 configuraciones, pérdida de validación) -----
-valores_C = [args.C] if args.C is not None else list(np.logspace(-4, 1, 10))
+valores_C = [C_param] if C_param is not None else list(np.logspace(-4, 1, 10))
 filas, ajustes = [], []
 for C in valores_C:
     t0 = time.perf_counter()

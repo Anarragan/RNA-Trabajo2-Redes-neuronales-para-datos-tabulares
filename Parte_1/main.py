@@ -11,12 +11,14 @@ Comandos (cada uno corre su script y le pasa el resto de las opciones):
   todo       rl, rna, evaluar, scorecard y comparar, en ese orden (no incluye 'datos')
 
 Ejemplos:
-  python main.py todo                          flujo completo (~5 min)
-  python main.py todo --demo                   rl, rna y evaluar en versión rápida (< 2 min)
-  python main.py rna --demo                    solo la red, rápida
-  python main.py rna --busqueda 0 --capas 64 32 --lr 0.001 --dropout 0.2 --l2 1e-4
-  python main.py scorecard --base 600 --odds 5 --pdo 20
-  python main.py rl --C 0.1
+  python main.py todo                                                   flujo completo (~5 min)
+  python main.py todo --demo                                            versión rápida (< 2 min)
+  python main.py rna --demo                                             solo la red, rápida (< 30 s)
+  python main.py rna --capas 64 32 --lr 0.001 --dropout 0.2 --l2 1e-4   entrenamiento directo con parámetros
+  python main.py rna --config config.json                              entrenamiento desde archivo JSON
+  python main.py scorecard --base 600 --odds 5 --pdo 20                 calibrar escala de la scorecard
+  python main.py scorecard --config config.json                         scorecard desde archivo JSON
+  python main.py rl --C 0.1                                             regresión logística con C fijo
 Opciones de un comando:  python main.py <comando> --help
 """
 import argparse

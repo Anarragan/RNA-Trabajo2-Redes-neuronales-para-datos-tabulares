@@ -10,12 +10,15 @@ Comandos (cada uno corre su script y le pasa el resto de las opciones):
   todo       datos, rl, rna, evaluar y comparar, en ese orden
 
 Ejemplos:
-  python main.py todo                          flujo completo con búsqueda e hiperparámetros
-  python main.py todo --demo                   versión rápida (< 30 s) para sustentación en vivo
-  python main.py rna --demo                    solo la red neuronal de LGD en versión rápida
+  python main.py todo                                                   flujo completo con búsqueda e hiperparámetros
+  python main.py todo --demo                                            versión rápida (< 30 s) para sustentación en vivo
+  python main.py rna --demo                                             solo la red neuronal de LGD en versión rápida
+  python main.py rna --capas 64 32 --lr 0.001 --dropout 0.2 --l2 1e-4   entrenamiento directo con parámetros
+  python main.py rna --config config.json                              entrenamiento desde archivo JSON
   python main.py rna --semillas 30 --epocas 40
   python main.py evaluar --demo
   python main.py rl --alpha 1.0
+  python main.py rl --config config.json
 Opciones de un comando:  python main.py <comando> --help
 """
 import argparse

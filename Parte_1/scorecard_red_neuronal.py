@@ -15,9 +15,12 @@ Idea en tres pasos:
 
     python scorecard_red_neuronal.py                              # Base 600, odds 5:1, PDO 20
     python scorecard_red_neuronal.py --base 600 --odds 5 --pdo 20
+    python scorecard_red_neuronal.py --config config.json
 """
 import argparse
+import json
 import os
+import sys
 
 import joblib
 import numpy as np
@@ -59,16 +62,29 @@ def puntos_por_variable(modelo, X, x_ref, factor, pasos=50, lote=4096):
 
 
 def main():
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))   # las rutas son relativas a Parte_1
     p = argparse.ArgumentParser(description="Tarea 6: scorecard sobre la red neuronal")
-    p.add_argument("--base", type=float, default=600, help="puntaje base")
-    p.add_argument("--odds", type=float, default=5, help="odds de referencia buenos:malos (5 = 5 buenos por cada malo)")
-    p.add_argument("--pdo", type=float, default=20, help="puntos para duplicar las odds")
+    p.add_argument("--base", type=float, default=600, help="puntaje base (defecto: 600)")
+    p.add_argument("--odds", type=float, default=5, help="odds de referencia buenos:malos (5 = 5 buenos por cada malo; defecto: 5)")
+    p.add_argument("--pdo", type=float, default=20, help="puntos para duplicar las odds (defecto: 20)")
+    p.add_argument("--config", type=str, default=None, help="ruta a archivo JSON con parámetros base, odds, pdo")
     a = p.parse_args()
 
+    ruta_config = os.path.abspath(a.config) if a.config else None
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))   # las rutas son relativas a Parte_1
+
+    base, odds, pdo = a.base, a.odds, a.pdo
+    if ruta_config:
+        if not os.path.exists(ruta_config):
+            sys.exit(f"Error: No se encontró el archivo de configuración '{a.config}'")
+        with open(ruta_config, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+            base = cfg.get("base", base)
+            odds = cfg.get("odds", odds)
+            pdo = cfg.get("pdo", pdo)
+
     # 1. Escala, red y datos ----------------------------------------------------------------------
-    factor, offset = escala(a.base, a.odds, a.pdo)
-    print(f"ESCALA: base {a.base:g} puntos con odds {a.odds:g}:1 (p_malo = {1 / (1 + a.odds):.3f}) | PDO {a.pdo:g}"
+    factor, offset = escala(base, odds, pdo)
+    print(f"ESCALA: base {base:g} puntos con odds {odds:g}:1 (p_malo = {1 / (1 + odds):.3f}) | PDO {pdo:g}"
           f" | Factor = {factor:.3f} | Offset = {offset:.3f}")
     modelo, config = cargar_red()
     prep, X, y, _ = preparar()
@@ -80,7 +96,7 @@ def main():
     puntaje = {k: offset - factor * v for k, v in z.items()}
 
     print("\nVERIFICACIONES")
-    for etiqueta, o in (("odds de referencia", a.odds), ("odds el doble", 2 * a.odds)):
+    for etiqueta, o in (("odds de referencia", odds), ("odds el doble", 2 * odds)):
         pm = 1 / (1 + o)
         print(f"  {etiqueta} ({o:g}:1) -> {offset + factor * np.log((1 - pm) / pm):.2f} puntos")
     auc = {k: (roc_auc_score(y[k], prob[k]), roc_auc_score(y[k], -puntaje[k])) for k in X}
@@ -109,7 +125,7 @@ def main():
     tabla.round(4).to_csv("resultados/t6_rn_puntos_variables.csv", index_label="variable")
 
     # 4. Todo lo que necesita la aplicación web, en un solo archivo -----------------------------------------------
-    joblib.dump({"preprocesador": prep, "base": a.base, "odds": a.odds, "pdo": a.pdo, "factor": factor,
+    joblib.dump({"preprocesador": prep, "base": base, "odds": odds, "pdo": pdo, "factor": factor,
                  "offset": offset, "x_ref": x_ref, "puntos_base": puntos_base,
                  "puntajes_referencia": np.sort(puntaje["entrenamiento"]).astype("float32"),
                  "modelo_red": "modelos/red_neuronal.pt"}, "modelos/scorecard.joblib")
@@ -118,4 +134,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
