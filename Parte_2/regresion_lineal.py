@@ -82,12 +82,11 @@ def main():
     parser.add_argument("--config", type=str, default=None, help="ruta a archivo JSON con parámetro alpha")
     args = parser.parse_args()
 
-    ruta_config = os.path.abspath(args.config) if args.config else None
     alpha = args.alpha
-    if ruta_config:
-        if not os.path.exists(ruta_config):
+    if args.config:
+        if not os.path.exists(args.config):
             sys.exit(f"Error: No se encontró el archivo de configuración '{args.config}'")
-        with open(ruta_config, "r", encoding="utf-8") as f:
+        with open(args.config, "r", encoding="utf-8") as f:
             cfg = json.load(f)
             if "alpha" in cfg:
                 alpha = cfg["alpha"]
