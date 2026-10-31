@@ -2,7 +2,7 @@
 Configuracion: {'capas': [32], 'activacion': 'leaky_relu', 'dropout': 0.2, 'l2': 0.0001, 'optimizador': 'adam', 'lr': 0.001}
 Parametros Entrenables: 1281
 Semillas evaluadas: 30 (Mejor semilla: 21)
-Tiempo busqueda: 30.5 s | Tiempo semillas: 54.9 s | Total: 89.2 s
+Tiempo busqueda: 29.0 s | Tiempo semillas: 54.1 s | Total: 86.3 s
 
 [Prueba - 30 semillas]
 MAE:  0.1834 +/- 0.0003 (Mejor: 0.1828 | Peor: 0.1839)
